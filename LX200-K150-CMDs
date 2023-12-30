@@ -1,0 +1,392 @@
+    case '!': send ("H-Hz="); send (hspeed); send (",\t D-Hz="); send (dspeed); send (",\t Pos: "); send_Ginfo ();  
+    case 's': set_slew_slow.set_speed_motor (stepperH, hspeed); set_slew_slow.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'S': set_slew_fast.set_speed_motor (stepperH, hspeed); set_slew_fast.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'T': set_tracking.set_speed_motor (stepperH, hspeed); set_tracking.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'F': set_focus.set_speed_motor (stepperF, dspeed); cmdi=0; break;
+    case 'h': stepperH.softStop(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case 'd': stepperD.softStop(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case 'H': hdir ^= 1; stepperH.softStop(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case 'D': ddir ^= 1; stepperD.softStop(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case '+': hspeed *= 2.0; send (hspeed); sendNewLine(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case '-': hspeed /= 2.0; send (hspeed); sendNewLine(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case '>': dspeed *= 2.0; send (dspeed); sendNewLine(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case '<': dspeed /= 2.0; send (dspeed); sendNewLine(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case 'P': if (trk_power < 100) trk_power += 4; stepperH.setRunKVAL(trk_power); stepperD.setRunKVAL(trk_power);  send ("Trk RunKVAL="); send (trk_power); sendNewLine(); cmdi=0; break;
+    case 'p': if (trk_power > 10) trk_power -= 4; stepperH.setRunKVAL(trk_power); stepperD.setRunKVAL(trk_power);  send ("Trk RunKVAL="); send (trk_power); sendNewLine(); cmdi=0; break;
+    case '4': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]); cmdi=0; break; 
+    case '6': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]); cmdi=0; break; 
+    case '2': stepperD.softStop(); stepperD.run(D_REV, slew_rate[MOTOR_D]); cmdi=0; break; 
+    case '8': stepperD.softStop(); stepperD.run(D_FWD, slew_rate[MOTOR_D]); cmdi=0; break; 
+    case '7': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]);
+    case '9': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]);
+    case '1': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]);
+    case '3': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]);
+    case '5': case '0': stepperH.softStop();  stepperD.softStop(); cmdi=0; break; 
+    case '.': case 't':
+    case ':': cmdi = 1; break; // start command
+    case '#': cmdi = 0; break; // end command
+    case '#':
+        case 0x06: // <ACK> Query of alignemnt mode
+        case 0x04: // <EOT> Query Firmware Download Request
+        case 'A': // Alignment Commands
+            case 'a': // :Aa# auto alignment ret 1: complete, ret 0 fail or not AzEl
+            case 'L': // :AL# set Land Alignment mode
+            case 'P': // :AP# set Polar alignemnt mode
+            case 'A': // :AA# set AltAz mode
+        case 'B': // Active Backlash Compensation
+            case 'a': // :BAdd# set alt/dec antibacklash
+            case 'Z': // :BZdd# set AZ/RA antibacklash
+        case 'C': // Sync Control
+            case 'M': // :CM#  Synchronizes the telescope's position with the currently selected database object's coordinates. Returns " Object#"
+        case 'f': // Fan/Heater Commands
+        case 'F': // Focuser Commands :F+#:, F-#, FB#
+            case '+': // :F+# Start Focuser moving inward (toward objective)
+            case '-': // :F-# Start Focuser moving outward (away from objective)
+            case 'N': // :FN Snnn# Start Focuser moving nnn steps
+            case 'R': // :FR fff# Set Focuser moving speed steps/sec
+            case 'C': // :FC ...# configure Focus Motor
+            case 'S': // :FS# Stop Focuser movments
+            case 'P': // :FP# Get Focus Position index
+            case '0': // :F0# Reset Focus Position index to 0
+        case 'G': // G – Get Telescope Information
+            case 'N': // :GN# Get Telescope RA, Returns position integer counts [RA,DE]: [0xHHHHHHHH,0xHHHHHHHH]#1
+            case 'i': // :Ginfo# 10micron -- This format may consist of more parts some day
+            case 'R': // :GR...# Get ...
+                case 'T': // :GRTMP# RefractionModelTemperature is %0+6.1f degrees
+                case 'P': // :GRPS# RefractionModelPressure is %06.1f hPa
+            case 'D': // :GD# Get Telescope Declination. Returns: sDD*MM# or sDD*MM’SS#:GZ#
+            case 'r': // :Gr# Get current/target object RA
+            case 'd': // :Gd# Get current/target object DE
+            case '*': // :G*#
+            case 'Z': // :GZ# Get telescope azimuth, Returns: DDD*MM#T or DDD*MM’SS#
+            case 'G': // :GG# Get UTC offset time
+            case 'H': // :GH# DST
+            case 'L': // :GL# Local Time HH:MM:SS
+            case 'C': // :GC#  Get current date. Returns: MM/DD/YY#
+            case 'm': // :Gm# Get distance to Meridian [Max Only]
+            case 'g': // :Gg# Get Current Site Longitude, East Longitudes are expressed as negative
+            case 't': // :Gt# Get Site Latitude, North positive
+            case 'S': // :GS#  Get the Sidereal Time -- HourAngle
+            case 'f': // :Gf# Get Browse Faint Magnitude Limit
+            case 'l': // :Gf# Get Browse Large Magnitude Limit
+            case 'E': // :GE#  Get Selenographic Latitude (Moon Coords)
+            case 'e': // :Ge#  Get Selenographic Longitude (Moon Coords)
+            case 'F': // :GF#  Find Field Diameter
+            case 'K': // K150 pyz cmd :GK# Get telescope coordinates H::D# in raw
+            case 'T': // :GT# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+            case '~': // :G~# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+            case 'V': // Firmware
+                case 'D': send(VERSION_FWDATE1); break;
+                case 'N': send(VERSION_NUMBER); break;
+                case 'P': send(VERSION_PRODUCT); break;
+                case 'I': send(VERSION_INFO); break;
+                case 'Z': send(VERSION_CONTROLBOX); break;
+                case 'T': send(VERSION_FWDATE2); break;
+        case 'h': // Home Position Commands
+        case 'H': // Time Format Commands
+        case 'I': // Initialize Commands
+        case 'L': // Obj Lib Commands
+        case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
+        case 'S': // S – Set Commands
+            case 'g': // :SgDDD*MM# Set current site’s longitude to DDD*MM an ASCII position string
+            case 't': // :St +DDD:MM:SS# set Site Latitude
+            case 'L': // :SL HH:MM:SS# Set the local Time 
+            case 'C': // :SC YYYY/MM/DD# Set the local Date
+            case 'G': // ::SGsHH.H# Set the number of hours added to local time to yield UTC -- do this first!
+            case 'r': // :Sr HH:MM:SS#   RA set pos (object, ...) 
+            case 'd': // :Sd DD:MM:SS#      DE set pos (object, ...)
+            case 'K': // K150 pyz cmd :GK# Set telescope coordinates H;D# in raw
+X-Nucleo-Ardu_tvat-Due.ino:	              case 'M': // :SM..# Setup Motor Controller Modes
+          		  case 'F': set_slew_fast.setup(&cmdc[4]); break; // :SMF...# setup motor slew_fast
+          		  case 'S': set_slew_slow.setup(&cmdc[4]); break; // :SMS...# setup motor slew_slow
+          		  case 'T': set_tracking.setup(&cmdc[4]); break; // :SMT...# setup motor tracking
+                case 'f': set_focus.setup(&cmdc[4]); break; // :SMf...# setup motor focus
+        case 'Q': // Q – Movement Commands
+X-Nucleo-Ardu_tvat-Due.ino:	              case '*': // :Q*# or
+  	        case 0: // :Q# stop slew, return to tracking if in FINE mode
+            case '0': // :Q0# stop all motions
+            case 'X': // :QX# Emergency Stop All
+            case 'V': // :QV#  coarse fast slew -- reconfiguration will stop motor before adjusting, necessary by driver!
+            case 'v': // :Qv#  fine fastest slew
+            case 'F': // :QF#  fine fast slew
+            case 'f': // :Qf#  fine slew
+            case 'w': // :Qw# slew west
+            case 'R': // :QR#  H+ RA+++ slew
+            case 'e': // :Qe# slew east
+            case 'r': // :Qr#  H- RA--- slew
+            case 'n': // :Qn# slew north
+            case 'D': // :QD#  D+  DE+++ slew
+            case 's': // :Qs# slew south
+            case 'd': // :Qd#   D-  DE--- slew
+            case 'M': // K150 pyz cmd :=QMnnnn;nnnn# request Hn, Dn rel movement in raw
+        case 'R': // Slew Rate Commands
+            case 'C': // :RC# Set Slew rate to Centering rate (2nd slowest)
+            case 'G': // :RG# Set Slew rate to Guiding Rate (slowest)
+            case 'M': // :RM# Set Slew rate to Find Rate (2nd Fastest)
+            case 'S': // :RS# Set Slew rate to max (fastest)
+            case '*': // :R[RS]*n,fff.ff# Read / Reconfigure slew rate list settings:  slew_rate_list[n] = f
+                case 'R': // :R*Rn# Read
+                case 'S': // :R*Sn,fff.ff#  Set
+                case 'C': // :R*Cn# Choose Slew Rate
+            case 'R': // :RRn,fff.ff# Reconfigure slew rate list settings:  slew_rate_list[n] = f
+        case 'M': // Telescope Movement Commands (experimental)
+            case 'g': // :Mg[nsew]DDDD#  Guide telescope in the commanded direction (nsew) for the number of milliseconds indicated by the unsigned number passed in the command. These commands support serial port driven guiding
+                case 'n': break;
+            case 'S': // :MS#  Slew to Target object (cur pos), track
+            case 'T': // :MTbool# auto track HR angle error and correct, bool = 0,1
+        case 'T': // T – Tracking Commands
+            case '+': // :T+#
+            case '-': // :T+#
+            case 'R': // :TR# report current tracking rates
+            case 'H': // :TH#  track hour ++ axis sideral
+            case 'D': // track decl ++ axis sideral
+            case 'C': // :TCffff.f,ffff.f# configure custom tracking rates H,D := fHz, fHz
+                case 'R': // :TCR# report custom tracking rates
+            case 'M': // :TM# Select custom tracking rate [ no-op in Autostar II]
+            case 'Q':  // :TQ# Selects sidereal tracking rate
+            case 'S':  // :TS# Selects solar tracking rate
+            case 'L':  // :TL# Selects lunar tracking rate
+            case '>':  // :T>[HD]# Select forward tracking on axis
+          		  case 'H': tracking_dir[MOTOR_H] = H_FWD;
+          		  case 'D': tracking_dir[MOTOR_D] = D_FWD;
+            case '<':  // :T<[HD]# Select reverse tracking on axis
+          		  case 'H': tracking_dir[MOTOR_H] = H_REV;
+          		  case 'D': tracking_dir[MOTOR_D] = D_REV;
+            case '0':  // :T0[HD]# disable tracking on axis, T00: Emergency Stop All Motions
+                case 'H':
+                case 'D': stepperD.softStop(); break;
+                case '0': 
+        case 'U': 
+            case '2': send("GM K150 X-NUCLEO#\n"); break;
+        case 'V': send("PEC N/A#\n"); break;
+        case 'W': send("SITE SELECT N/A#\n"); break;
+        case 'm': // :modelcnt# ...
+        case 'g': // :getalst# ...
+            case 'e': send("0#\n"); break;
+            case '#':// GPS
+        case '?':
+        case '@': // :@# Test Astro Class
+        case '%': // :%N# KeyPad Controland Query DKey
+            case 'K': key_pad_enable = 1; break; // :%K#  keyPad enable
+            case 'k': key_pad_enable = 0; break; // :%k#  keyPad disable
+            case '7': send("K[00]="); send(DKey[0][0]); send("#\n"); break;
+            case '8': send("K[10]="); send(DKey[1][0]); send("#\n"); break;
+            case '9': send("K[20]="); send(DKey[2][0]); send("#\n"); break;
+            case '4': send("K[01]="); send(DKey[0][1]); send("#\n"); break;
+            case '5': send("K[11]="); send(DKey[1][1]); send("#\n"); break;
+            case '6': send("K[21]="); send(DKey[2][1]); send("#\n"); break;
+            case '1': send("K[02]="); send(DKey[0][2]); send("#\n"); break;
+            case '2': send("K[12]="); send(DKey[1][2]); send("#\n"); break;
+            case '3': send("K[22]="); send(DKey[2][2]); send("#\n"); break;
+            case '0': send("K[03]="); send(DKey[0][3]); send("#\n"); break;
+            case 'A': send("K[13]="); send(DKey[1][3]); send("#\n"); break;
+            case 'B': send("K[23]="); send(DKey[2][3]); send("#\n"); break;
+   the compensation works. In this case the minimum speed of the speed profile is set to zero.
+case 'M': max_speed = getfvalue (&cmd[1]);  /* Serial.println(max_speed); */  break;  // :SM[FST]Mxxx#
+case 'F': full_speed = getfvalue (&cmd[1]); /* Serial.println(full_speed); */; break; // :SM[FST]Fxxx#
+case 'A': acc = getfvalue (&cmd[1]); /* Serial.print(acc); */ break; // :SM[FST]Axxx#
+case 'D': dec = getfvalue (&cmd[1]); /* Serial.print(dec); */ break; // :SM[FST]Dxxx#
+case 'K':
+  case 'R': run_kval = getivalue (&cmd[2]); /* Serial.print(run_kval); */ break; // :SM[FST]KRxxx#
+  case 'A': acc_kval = getivalue (&cmd[2]); /* Serial.print(acc_kval); */ break; // :SM[FST]KAxxx#
+  case 'D': dec_kval = getivalue (&cmd[2]); /* Serial.print(dec_kval); */ break; // :SM[FST]KDxxx#
+  case 'H': hold_kval = getivalue (&cmd[2]); /* Serial.print(hold_kval); */ break; // :SM[FST]KHxxx#
+case KY1: KEY_PAD_PRESSED ("00 H-D+"); // Key Pressed
+case -KY1: KEY_PAD_RELEASED ("00");	// Key Relesed
+case  KY1: KEY_PAD_PRESSED ("20 H+D+"); 	// Key Pressed
+case -KY1: KEY_PAD_RELEASED ("20");  // Key Relesed
+case  KY3: KEY_PAD_PRESSED ("02 H-D-");	// Key Pressed
+case -KY3: KEY_PAD_RELEASED ("02"); 	// Key Relesed
+case  KY3: KEY_PAD_PRESSED ("22 H+D-");	// Key Pressed
+case -KY3: KEY_PAD_RELEASED ("22");	// Key Relesed
+case  KY1: KEY_PAD_PRESSED ("10 D+");  	// Key Pressed
+case -KY1: KEY_PAD_RELEASED ("10");// Key Relesed
+case  KY3: KEY_PAD_PRESSED ("12 D-");  // Key Down
+case -KY3: KEY_PAD_RELEASED ("12");   // Key Relesed
+case  KY2: KEY_PAD_PRESSED ("01 H-"); // Key Down
+case -KY2: KEY_PAD_RELEASED ("01"); // Key Relesed
+case  KY2: KEY_PAD_PRESSED ("21 H+"); 	// Key Down
+case -KY2: KEY_PAD_RELEASED ("21"); // Key Relesed
+    case '!': send ("H-Hz="); send (hspeed); send (",\t D-Hz="); send (dspeed); send (",\t Pos: "); send_Ginfo ();  
+    case 's': set_slew_slow.set_speed_motor (stepperH, hspeed); set_slew_slow.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'S': set_slew_fast.set_speed_motor (stepperH, hspeed); set_slew_fast.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'T': set_tracking.set_speed_motor (stepperH, hspeed); set_tracking.set_speed_motor (stepperD, dspeed); cmdi=0; break;
+    case 'F': set_focus.set_speed_motor (stepperF, dspeed); cmdi=0; break;
+    case 'h': stepperH.softStop(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case 'd': stepperD.softStop(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case 'H': hdir ^= 1; stepperH.softStop(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case 'D': ddir ^= 1; stepperD.softStop(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case '+': hspeed *= 2.0; send (hspeed); sendNewLine(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case '-': hspeed /= 2.0; send (hspeed); sendNewLine(); stepperH.run(hdir, hspeed); cmdi=0; break;
+    case '>': dspeed *= 2.0; send (dspeed); sendNewLine(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case '<': dspeed /= 2.0; send (dspeed); sendNewLine(); stepperD.run(ddir, dspeed); cmdi=0; break;
+    case 'P': if (trk_power < 100) trk_power += 4; stepperH.setRunKVAL(trk_power); stepperD.setRunKVAL(trk_power);  send ("Trk RunKVAL="); send (trk_power); sendNewLine(); cmdi=0; break;
+    case 'p': if (trk_power > 10) trk_power -= 4; stepperH.setRunKVAL(trk_power); stepperD.setRunKVAL(trk_power);  send ("Trk RunKVAL="); send (trk_power); sendNewLine(); cmdi=0; break;
+    case '4': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]); cmdi=0; break; 
+    case '6': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]); cmdi=0; break; 
+    case '2': stepperD.softStop(); stepperD.run(D_REV, slew_rate[MOTOR_D]); cmdi=0; break; 
+    case '8': stepperD.softStop(); stepperD.run(D_FWD, slew_rate[MOTOR_D]); cmdi=0; break; 
+    case '7': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]);
+    case '9': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]);
+    case '1': stepperH.softStop(); stepperH.run(H_REV, slew_rate[MOTOR_H]);
+    case '3': stepperH.softStop(); stepperH.run(H_FWD, slew_rate[MOTOR_H]);
+    case '5': case '0': stepperH.softStop();  stepperD.softStop(); cmdi=0; break; 
+    case '.': case 't':
+    case ':': cmdi = 1; break; // start command
+    case '#': cmdi = 0; break; // end command
+    case '#':
+        case 0x06: // <ACK> Query of alignemnt mode
+        case 0x04: // <EOT> Query Firmware Download Request
+        case 'A': // Alignment Commands
+            case 'a': // :Aa# auto alignment ret 1: complete, ret 0 fail or not AzEl
+            case 'L': // :AL# set Land Alignment mode
+            case 'P': // :AP# set Polar alignemnt mode
+            case 'A': // :AA# set AltAz mode
+        case 'B': // Active Backlash Compensation
+            case 'a': // :BAdd# set alt/dec antibacklash
+            case 'Z': // :BZdd# set AZ/RA antibacklash
+        case 'C': // Sync Control
+            case 'M': // :CM#  Synchronizes the telescope's position with the currently selected database object's coordinates. Returns " Object#"
+        case 'f': // Fan/Heater Commands
+        case 'F': // Focuser Commands :F+#:, F-#, FB#
+            case '+': // :F+# Start Focuser moving inward (toward objective)
+            case '-': // :F-# Start Focuser moving outward (away from objective)
+            case 'N': // :FN Snnn# Start Focuser moving nnn steps
+            case 'R': // :FR fff# Set Focuser moving speed steps/sec
+            case 'C': // :FC ...# configure Focus Motor
+            case 'S': // :FS# Stop Focuser movments
+            case 'P': // :FP# Get Focus Position index
+            case '0': // :F0# Reset Focus Position index to 0
+        case 'G': // G – Get Telescope Information
+            case 'N': // :GN# Get Telescope RA, Returns position integer counts [RA,DE]: [0xHHHHHHHH,0xHHHHHHHH]#1
+            case 'i': // :Ginfo# 10micron -- This format may consist of more parts some day
+            case 'R': // :GR...# Get ...
+                case 'T': // :GRTMP# RefractionModelTemperature is %0+6.1f degrees
+                case 'P': // :GRPS# RefractionModelPressure is %06.1f hPa
+            case 'D': // :GD# Get Telescope Declination. Returns: sDD*MM# or sDD*MM’SS#:GZ#
+            case 'r': // :Gr# Get current/target object RA
+            case 'd': // :Gd# Get current/target object DE
+            case '*': // :G*#
+            case 'Z': // :GZ# Get telescope azimuth, Returns: DDD*MM#T or DDD*MM’SS#
+            case 'G': // :GG# Get UTC offset time
+            case 'H': // :GH# DST
+            case 'L': // :GL# Local Time HH:MM:SS
+            case 'C': // :GC#  Get current date. Returns: MM/DD/YY#
+            case 'm': // :Gm# Get distance to Meridian [Max Only]
+            case 'g': // :Gg# Get Current Site Longitude, East Longitudes are expressed as negative
+            case 't': // :Gt# Get Site Latitude, North positive
+            case 'S': // :GS#  Get the Sidereal Time -- HourAngle
+            case 'f': // :Gf# Get Browse Faint Magnitude Limit
+            case 'l': // :Gf# Get Browse Large Magnitude Limit
+            case 'E': // :GE#  Get Selenographic Latitude (Moon Coords)
+            case 'e': // :Ge#  Get Selenographic Longitude (Moon Coords)
+            case 'F': // :GF#  Find Field Diameter
+            case 'K': // K150 pyz cmd :GK# Get telescope coordinates H::D# in raw
+            case 'T': // :GT# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+            case '~': // :G~# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+            case 'V': // Firmware
+                case 'D': send(VERSION_FWDATE1); break;
+                case 'N': send(VERSION_NUMBER); break;
+                case 'P': send(VERSION_PRODUCT); break;
+                case 'I': send(VERSION_INFO); break;
+                case 'Z': send(VERSION_CONTROLBOX); break;
+                case 'T': send(VERSION_FWDATE2); break;
+        case 'h': // Home Position Commands
+        case 'H': // Time Format Commands
+        case 'I': // Initialize Commands
+        case 'L': // Obj Lib Commands
+        case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
+        case 'S': // S – Set Commands
+            case 'g': // :SgDDD*MM# Set current site’s longitude to DDD*MM an ASCII position string
+            case 't': // :St +DDD:MM:SS# set Site Latitude
+            case 'L': // :SL HH:MM:SS# Set the local Time 
+            case 'C': // :SC YYYY/MM/DD# Set the local Date
+            case 'G': // ::SGsHH.H# Set the number of hours added to local time to yield UTC -- do this first!
+            case 'r': // :Sr HH:MM:SS#   RA set pos (object, ...) 
+            case 'd': // :Sd DD:MM:SS#      DE set pos (object, ...)
+            case 'K': // K150 pyz cmd :GK# Set telescope coordinates H;D# in raw
+X-Nucleo-Ardu_tvat-Due.ino:	              case 'M': // :SM..# Setup Motor Controller Modes
+          		  case 'F': set_slew_fast.setup(&cmdc[4]); break; // :SMF...# setup motor slew_fast
+          		  case 'S': set_slew_slow.setup(&cmdc[4]); break; // :SMS...# setup motor slew_slow
+          		  case 'T': set_tracking.setup(&cmdc[4]); break; // :SMT...# setup motor tracking
+                case 'f': set_focus.setup(&cmdc[4]); break; // :SMf...# setup motor focus
+        case 'Q': // Q – Movement Commands
+X-Nucleo-Ardu_tvat-Due.ino:	              case '*': // :Q*# or
+  	        case 0: // :Q# stop slew, return to tracking if in FINE mode
+            case '0': // :Q0# stop all motions
+            case 'X': // :QX# Emergency Stop All
+            case 'V': // :QV#  coarse fast slew -- reconfiguration will stop motor before adjusting, necessary by driver!
+            case 'v': // :Qv#  fine fastest slew
+            case 'F': // :QF#  fine fast slew
+            case 'f': // :Qf#  fine slew
+            case 'w': // :Qw# slew west
+            case 'R': // :QR#  H+ RA+++ slew
+            case 'e': // :Qe# slew east
+            case 'r': // :Qr#  H- RA--- slew
+            case 'n': // :Qn# slew north
+            case 'D': // :QD#  D+  DE+++ slew
+            case 's': // :Qs# slew south
+            case 'd': // :Qd#   D-  DE--- slew
+            case 'M': // K150 pyz cmd :=QMnnnn;nnnn# request Hn, Dn rel movement in raw
+        case 'R': // Slew Rate Commands
+            case 'C': // :RC# Set Slew rate to Centering rate (2nd slowest)
+            case 'G': // :RG# Set Slew rate to Guiding Rate (slowest)
+            case 'M': // :RM# Set Slew rate to Find Rate (2nd Fastest)
+            case 'S': // :RS# Set Slew rate to max (fastest)
+            case '*': // :R[RS]*n,fff.ff# Read / Reconfigure slew rate list settings:  slew_rate_list[n] = f
+                case 'R': // :R*Rn# Read
+                case 'S': // :R*Sn,fff.ff#  Set
+                case 'C': // :R*Cn# Choose Slew Rate
+            case 'R': // :RRn,fff.ff# Reconfigure slew rate list settings:  slew_rate_list[n] = f
+        case 'M': // Telescope Movement Commands (experimental)
+            case 'g': // :Mg[nsew]DDDD#  Guide telescope in the commanded direction (nsew) for the number of milliseconds indicated by the unsigned number passed in the command. These commands support serial port driven guiding
+                case 'n': break;
+            case 'S': // :MS#  Slew to Target object (cur pos), track
+            case 'T': // :MTbool# auto track HR angle error and correct, bool = 0,1
+        case 'T': // T – Tracking Commands
+            case '+': // :T+#
+            case '-': // :T+#
+            case 'R': // :TR# report current tracking rates
+            case 'H': // :TH#  track hour ++ axis sideral
+            case 'D': // track decl ++ axis sideral
+            case 'C': // :TCffff.f,ffff.f# configure custom tracking rates H,D := fHz, fHz
+                case 'R': // :TCR# report custom tracking rates
+            case 'M': // :TM# Select custom tracking rate [ no-op in Autostar II]
+            case 'Q':  // :TQ# Selects sidereal tracking rate
+            case 'S':  // :TS# Selects solar tracking rate
+            case 'L':  // :TL# Selects lunar tracking rate
+            case '>':  // :T>[HD]# Select forward tracking on axis
+          		  case 'H': tracking_dir[MOTOR_H] = H_FWD;
+          		  case 'D': tracking_dir[MOTOR_D] = D_FWD;
+            case '<':  // :T<[HD]# Select reverse tracking on axis
+          		  case 'H': tracking_dir[MOTOR_H] = H_REV;
+          		  case 'D': tracking_dir[MOTOR_D] = D_REV;
+            case '0':  // :T0[HD]# disable tracking on axis, T00: Emergency Stop All Motions
+                case 'H':
+                case 'D': stepperD.softStop(); break;
+                case '0': 
+        case 'U': 
+            case '2': send("GM K150 X-NUCLEO#\n"); break;
+        case 'V': send("PEC N/A#\n"); break;
+        case 'W': send("SITE SELECT N/A#\n"); break;
+        case 'm': // :modelcnt# ...
+        case 'g': // :getalst# ...
+            case 'e': send("0#\n"); break;
+            case '#':// GPS
+        case '?':
+        case '@': // :@# Test Astro Class
+        case '%': // :%N# KeyPad Controland Query DKey
+            case 'K': key_pad_enable = 1; break; // :%K#  keyPad enable
+            case 'k': key_pad_enable = 0; break; // :%k#  keyPad disable
+            case '7': send("K[00]="); send(DKey[0][0]); send("#\n"); break;
+            case '8': send("K[10]="); send(DKey[1][0]); send("#\n"); break;
+            case '9': send("K[20]="); send(DKey[2][0]); send("#\n"); break;
+            case '4': send("K[01]="); send(DKey[0][1]); send("#\n"); break;
+            case '5': send("K[11]="); send(DKey[1][1]); send("#\n"); break;
+            case '6': send("K[21]="); send(DKey[2][1]); send("#\n"); break;
+            case '1': send("K[02]="); send(DKey[0][2]); send("#\n"); break;
+            case '2': send("K[12]="); send(DKey[1][2]); send("#\n"); break;
+            case '3': send("K[22]="); send(DKey[2][2]); send("#\n"); break;
+            case '0': send("K[03]="); send(DKey[0][3]); send("#\n"); break;
+            case 'A': send("K[13]="); send(DKey[1][3]); send("#\n"); break;
+            case 'B': send("K[23]="); send(DKey[2][3]); send("#\n"); break;

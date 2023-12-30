@@ -1,0 +1,113 @@
+:Aa# auto alignment ret 1: complete, ret 0 fail or not AzEl
+:AL# set Land Alignment mode
+:AP# set Polar alignemnt mode
+:AA# set AltAz mode
+:BAdd# set alt/dec antibacklash
+:BZdd# set AZ/RA antibacklash
+:CM#  Synchronizes the telescope's position with the currently selected database object's coordinates. Returns " Object#"
+
+:F+# Start Focuser moving inward (toward objective)
+:F-# Start Focuser moving outward (away from objective)
+:FN Snnn# Start Focuser moving nnn steps
+:FR fff# Set Focuser moving speed steps/sec
+:FC ...# configure Focus Motor
+:FS# Stop Focuser movments
+:FP# Get Focus Position index
+:F0# Reset Focus Position index to 0
+:GN# Get Telescope RA, Returns position integer counts [RA,DE]: [0xHHHHHHHH,0xHHHHHHHH]#1
+:Ginfo# 10micron -- This format may consist of more parts some day
+
+:G...# Get ...
+:GRTMP# RefractionModelTemperature is %0+6.1f degrees
+:GRPS# RefractionModelPressure is %06.1f hPa
+:GD# Get Telescope Declination. Returns: sDD*MM# or sDD*MM’SS#:GZ#
+:Gr# Get current/target object RA
+:Gd# Get current/target object DE
+:G*#
+:GZ# Get telescope azimuth, Returns: DDD*MM#T or DDD*MM’SS#
+:GG# Get UTC offset time
+:GH# DST
+:GL# Local Time HH:MM:SS
+:GC#  Get current date. Returns: MM/DD/YY#
+:Gm# Get distance to Meridian [Max Only]
+:Gg# Get Current Site Longitude, East Longitudes are expressed as negative
+:Gt# Get Site Latitude, North positive
+:GS#  Get the Sidereal Time -- HourAngle
+:Gf# Get Browse Faint Magnitude Limit
+:Gf# Get Browse Large Magnitude Limit
+:GE#  Get Selenographic Latitude (Moon Coords)
+:Ge#  Get Selenographic Longitude (Moon Coords)
+:GF#  Find Field Diameter
+:GT# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+:G~# --- actual stepping rate, NOT 60.0Hz motor / rev relative
+
+:S...# Set ...
+:SgDDD*MM# Set current site’s longitude to DDD*MM an ASCII position string
+:St +DDD:MM:SS# set Site Latitude
+:SL HH:MM:SS# Set the local Time 
+:SC YYYY/MM/DD# Set the local Date
+::SGsHH.H# Set the number of hours added to local time to yield UTC -- do this first!
+:Sr HH:MM:SS#   RA set pos (object, ...) 
+:Sd DD:MM:SS#      DE set pos (object, ...)
+:SM..# Setup Motor Controller Modes
+:SMF...# setup motor slew_fast
+:SMS...# setup motor slew_slow
+:SMT...# setup motor tracking
+:SMf...# setup motor focus
+
+
+:Q... # Slew Speed Adjustments
+:Q*# or
+:Q# stop slew, return to tracking if in FINE mode
+:Q0# stop all motions
+:QX# Emergency Stop All
+:QV#  coarse fast slew -- reconfiguration will stop motor before adjusting, necessary by driver!
+:Qv#  fine fastest slew
+:QF#  fine fast slew
+:Qf#  fine slew
+:Qw# slew west
+:QR#  H+ RA+++ slew
+:Qe# slew east
+:Qr#  H- RA--- slew
+:Qn# slew north
+:QD#  D+  DE+++ slew
+:Qs# slew south
+:Qd#   D-  DE--- slew
+
+:RC# Set Slew rate to Centering rate (2nd slowest)
+:RG# Set Slew rate to Guiding Rate (slowest)
+:RM# Set Slew rate to Find Rate (2nd Fastest)
+:RS# Set Slew rate to max (fastest)
+:R[RS]*n,fff.ff# Read / Reconfigure slew rate list settings:  slew_rate_list[n] = f
+:R*Rn# Read
+:R*Sn,fff.ff#  Set
+:R*Cn# Choose Slew Rate
+:RRn,fff.ff# Reconfigure slew rate list settings:  slew_rate_list[n] = f
+
+:Mg[nsew]DDDD#  Guide telescope in the commanded direction (nsew) for the number of milliseconds indicated by the unsigned number passed in the command. These commands support serial port driven guiding
+:MS#  Slew to Target object (cur pos), track
+:MTbool# auto track HR angle error and correct, bool = 0,1
+
+:T...# Tracking...
+:T+#
+:T+#
+:TR# report current tracking rates
+:TH#  track hour ++ axis sideral
+:TCffff.f,ffff.f# configure custom tracking rates H,D := fHz, fHz
+:TCR# report custom tracking rates
+:TM# Select custom tracking rate [ no-op in Autostar II]
+:TQ# Selects sidereal tracking rate
+:TS# Selects solar tracking rate
+:TL# Selects lunar tracking rate
+:T>[HD]# Select forward tracking on axis
+:T<[HD]# Select reverse tracking on axis
+:T0[HD]# disable tracking on axis, T00: Emergency Stop All Motions
+
+:modelcnt# ...
+:getalst# ...
+:@# Test Astro Class
+
+
+:%N# KeyPad Controland Query DKey
+:%K#  keyPad enable
+:%k#  keyPad disable
