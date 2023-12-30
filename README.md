@@ -2,6 +2,8 @@
 
 German Telescope Mount Motor Control
 
+Implemented basic "LX200 protcol" http://www.meade.com/support/TelescopeProtocol_2010-10.pdf (via USB Serial)
+
 Using ST Motor Driver Modules adapted for Arduino Due (See code for pin out, required a slight rerouting for Due)
 
 https://www.st.com/en/ecosystems/x-nucleo-ihm03a1.html
@@ -20,9 +22,6 @@ Optional: SD Card
 
 Code is configured for Arduino Due Platform, but fairly poratble.
 
-Uses: SPI.h, powerSTEP01ArduinoLibrary.h, Adafruit_GFX.h, Adafruit_SSD1351.h, HardwareSerial.h, DueTimer.h, AstroMini_Library.h
+Uses: SPI.h, powerSTEP01ArduinoLibrary.h, Adafruit_GFX.h, Adafruit_SSD1351.h, HardwareSerial.h, DueTimer.h, AstroMini_Library.h, Wire.h
 
-#include <Wire.h>
-
-Implemented basic "LX200 protcol" http://www.meade.com/support/TelescopeProtocol_2010-10.pdf
 
