@@ -1,0 +1,87 @@
+/*
+ *  This program calculates solar positions as a function of location, date, and time.
+ *  The equations are from Jean Meeus, Astronomical Algorithms, Willmann-Bell, Inc., Richmond, VA
+ *  (C) 2015, David Brooks, Institute for Earth Science Research and Education.
+ */
+
+
+#define DEG_TO_RAD 0.01745329
+#define RAD_TO_DEG 57.29577951308
+#define RAD_TO_HMS 3.819718634205
+#define PI 3.141592654
+#define TWOPI 6.28318531
+#define RAD_TO_SEC 206264.8062471
+#define RAD_TO_HSEC 13750.98708314
+#define SEC_TO_RAD  0.00000484813681109536
+#define HSEC_TO_RAD 0.00007272205216643040
+#define INVMIN 0.0166666666666666 // 1/60
+
+#include <HardwareSerial.h>
+
+// 40 57.3080 N (Lat)  (north positive) 40.955133
+// 72 55.6640 W (Lon)  (east positove) -72.927733
+
+
+class AstroMini{
+ public:
+  AstroMini (int hr=23, int min=0, int sec=0, int z=6,
+	     int m=3, int d=3,int y=2019,
+	     float lon=-72.927733*DEG_TO_RAD, float lat=40.955133*DEG_TO_RAD);
+
+  void Set_Time (int hr, int min, int sec, unsigned long millis0=0L, int z=6);
+  void Set_Date (int y, int m, int d);
+  void Set_Location (float lon, float lat);
+  void Set_LocationSexi (int lon_dms[3], int lat_dms[3]){
+    Lon = (lon_dms[2]+(lon_dms[2]<0?-INVMIN:INVMIN)*lon_dms[1])*DEG_TO_RAD;
+    Lat = (lat_dms[2]+(lat_dms[2]<0?-INVMIN:INVMIN)*lat_dms[1])*DEG_TO_RAD;
+  };
+  //  void Test (HardwareSerial *s, unsigned long ms);
+
+  float Longitude(){ return Lon; };
+  float Latitude(){ return Lat; };
+  
+  float JDFrac(){ return JD_frac; }; 
+  long  JDWhole(){ return JD_whole; }; 
+  float GrHA(){ return GrHrAngle; }; 
+  float HA(){ return HrAngle; }; 
+  int   TZOff(){ return zone; };
+  
+  //  void sun_pos ();
+
+  void Set_RA (float ra){
+    RA   = ra;
+  };
+  void Set_Decl (float decl){
+    Decl = decl;
+  };
+
+  void Set_memRA (float ra){
+    memRA   = ra;
+  };
+  void Set_memDecl (float decl){
+    memDecl = decl;
+  };
+  void Use_memRADecl(){
+    RA   = memRA;
+    Decl = memDecl;
+  };
+  float Get_memRA() { return memRA; };
+  float Get_memDecl() { return memDecl; };
+  
+  float calc_RA_from_hrangle (float hrangle);
+  void calc_JD_Time_GrHrAngle (unsigned long ms=0L); // with ms time offset from initial date/time
+  float calc_HrAngle ();
+  float calc_Elevation ();
+  float calc_Azimuth ();
+
+  long JulianDate(int y, int m, int d);
+
+  int amonth, aday, ayear, zone;
+ private:
+  unsigned long ms0;
+  int ahour, aminute, asecond;
+  float Lon, Lat;
+  float T,JD_frac,L0,M,e,C,L_true,f,R,GrHrAngle,Obl,RA,Decl,HrAngle;
+  float memRA, memDecl;
+  long JD_whole,JDx;
+};
