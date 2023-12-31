@@ -1,6 +1,6 @@
 # XNucleoGMControl
 
-German Telescope Mount Motor Control
+German Mount Telescope Motor Control
 
 Implemented basic "LX200 protcol" http://www.meade.com/support/TelescopeProtocol_2010-10.pdf (via USB Serial)
 
