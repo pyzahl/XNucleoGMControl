@@ -1826,10 +1826,11 @@ void Communication::Process(char controlbyte) {
               send("NA#\n");
               break;
             case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
-              i = axisH.Distance() + axisD.Distance();
-              while (i > 0){
+              // Distance() is in 1/128 deg units (microsteps / full steps per deg): one bar per deg, rounded up, max 32
+              i = (axisH.Distance() + axisD.Distance() + 127) / 128;
+              if (i > 32) i = 32;
+              for (; i > 0; --i)
                 send("-");
-              }
               send("#");
               break;
             case 'S': // S – Set Commands
