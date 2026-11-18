@@ -67,13 +67,23 @@ Used by: **S** = SkySafari (Meade LX200 Classic), **St** = Stellarium (desktop /
 | `:TM#` | custom rate | -- | ok |
 | `:SwN#` | max slew rate | `1` | accepted, GOTO_SPEED fixed |
 
+## Guiding
+
+| Command | Meaning | Reply | Status |
+|---|---|---|---|
+| `:Mgn# :Mgs# :Mge# :Mgw#` + `NNNN` | pulse guide NNNN ms (max 10000) | -- | ok |
+| `:RgSS.S#` | guide rate in arcsec/s (max sidereal 15.04) | -- | ok (default 0.5x = 7.5"/s) |
+| `:Rg#` | K150: report guide rate | `SS.S#` | ok |
+
+RA guiding changes the tracking rate to (1 +- guide rate) x sidereal -- the RA motor never
+reverses. Dec runs at +- guide rate. The ST-4 input uses the same engine and rate.
+
 ## Accepted silently / not implemented
 
 `:hP# :hR#` (park), `:H#`, `:I#`, `:L..#` (library), `:W1-4#` (site select), `:g+# :g-#` (GPS),
 `:V..#` (PEC), `:f..#` (fan), `:B..#` (reticle), `:AL# :AP# :AA#` -- no reply.
 
-Not implemented (no reply, apps time out on them): `:Mg[nsew]NNNN#` pulse guiding (use the ST-4
-input), `:Sa# :Sz# :MA#` (alt/az targets), `:GM#`..`:GP#` site names, `:ST#` tracking frequency,
+Not implemented (no reply, apps time out on them): `:Sa# :Sz# :MA#` (alt/az targets), `:GM#`..`:GP#` site names, `:ST#` tracking frequency,
 `:Sh# :So#` horizon/limits, `:P#`.
 
 ## K150 extensions (custom) and overlaps with standard commands

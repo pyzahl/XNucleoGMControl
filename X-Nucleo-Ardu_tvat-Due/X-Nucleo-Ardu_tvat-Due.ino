@@ -211,18 +211,8 @@ float slew_rate_list[8] = {
 };
 
 
-float st4correct_speed_list[8] = {
-  SIDERAL_H_HZ*0.2, // SLEW_FINE_HZ
-  SIDERAL_H_HZ*0.5, // SLEW_FFINE_HZ
-  SIDERAL_H_HZ*1.0, // SLEW_FFFINE_HZ
-  SIDERAL_H_HZ*2.0, // SLEW_FAST_HZ
-  SIDERAL_H_HZ*5.0, // SLEW_FFAST_HZ
-  SIDERAL_H_HZ*10.0,  // SLEW_FFFAST_HZ
-  SIDERAL_H_HZ*100.0, // SLEW_FFFFAST_HZ
-  0.0
-};
+// ST-4 guiding: see GUIDING (guide_rate), no longer tied to the hand box slew rate
 
-#define ST4_CORRECT_SPEED st4correct_speed_list [slew_i] // ST4 AUTO GUIDE CORRECTION SPEED
 
 
 #define SECS_PER_MIN    (60UL)
@@ -437,6 +427,69 @@ class Position {
 
 Position axisH(&stepperH);
 Position axisD(&stepperD);
+
+
+// ============================== GUIDING ==============================
+// Shared by the ST-4 port and LX200 pulse guiding (:Mg[nsew]NNNN#).
+//  RA : the H axis keeps running in tracking direction, only its rate changes by
+//       +-guide_rate (west = faster, east = slower) -> it never reverses, no RA backlash.
+//  Dec: the D axis runs at guide_rate north (D_FWD) / south (D_REV) for the pulse.
+// guide_rate is a fraction of sidereal (:RgSS.S# sets it in arcsec/s, Meade Autostar II).
+#define GUIDE_RATE_DEFAULT   0.5      // x sidereal
+#define GUIDE_MAX_PULSE_MS   10000UL  // longest accepted :Mg pulse
+#define SIDEREAL_ARCSEC_S    15.0410686
+float guide_rate = GUIDE_RATE_DEFAULT;
+
+struct GuideAxis {
+  bool active;          // guiding pulse running on this axis
+  bool timed;           // ends at end_ms (:Mg); otherwise until guide_stop (ST-4 released)
+  int  dir;             // +1 west / north, -1 east / south
+  unsigned long end_ms;
+  float base;           // H only: signed rate (full steps/s, + = H_FWD) to return to
+};
+GuideAxis guideH = { false, false, 0, 0UL, 0. };
+GuideAxis guideD = { false, false, 0, 0UL, 0. };
+
+void run_h_signed (float r){ // signed H rate, + = H_FWD (west)
+  if (r > 1e-3)       stepperH.run (H_FWD, r);
+  else if (r < -1e-3) stepperH.run (H_REV, -r);
+  else                stepperH.softStop ();
+}
+
+// axis 'H' or 'D', dir +1 west/north, -1 east/south, ms = 0: until guide_stop()
+void guide_start (char axis, int dir, unsigned long ms){
+  float g = guide_rate * SIDERAL_H_HZ;
+  GuideAxis &a = (axis == 'H') ? guideH : guideD;
+  if (axis == 'H' && !a.active) // remember what H was doing: tracking (signed) or stopped
+    a.base = axisH.isStopped() ? 0. : (tracking_dir[MOTOR_H] == H_FWD ? 1. : -1.) * tracking_rate[MOTOR_H];
+  a.active = true;
+  a.dir    = dir;
+  a.timed  = (ms > 0);
+  a.end_ms = millis() + (ms > GUIDE_MAX_PULSE_MS ? GUIDE_MAX_PULSE_MS : ms);
+  if (axis == 'H')
+    run_h_signed (a.base + dir*g);
+  else
+    stepperD.run (dir > 0 ? D_FWD : D_REV, g);
+}
+
+void guide_stop (char axis){
+  if (axis == 'H'){
+    if (guideH.active) run_h_signed (guideH.base);
+    guideH.active = false;
+  } else {
+    if (guideD.active) stepperD.softStop ();
+    guideD.active = false;
+  }
+}
+
+void guide_update (){ // from loop(): end timed pulses
+  unsigned long now = millis();
+  if (guideH.active && guideH.timed && (long)(now - guideH.end_ms) >= 0) guide_stop ('H');
+  if (guideD.active && guideD.timed && (long)(now - guideD.end_ms) >= 0) guide_stop ('D');
+}
+
+bool guiding (){ return guideH.active || guideD.active; }
+// =====================================================================
 
 class Settings {
 public:
@@ -769,7 +822,6 @@ void KeyPadComand(int DKey[4][4]) {
   static int focus_mode = 0;
   static int slew_i = 0;
   static int tdh = 1, tdd = 1;
-  static int st4_delay = 0;
   int resume_tracking=0;
 #ifdef HD_RUN_SIMULTANEOUS_ENABLE
   switch (DKey[0][0]) {   // H-, D+
@@ -866,74 +918,45 @@ void KeyPadComand(int DKey[4][4]) {
       break;
   }
 
-  // ST4 commands
-
+  // ST-4 autoguider input -> guide engine (H+ = west / faster, H- = east / slower, D+ = north)
   switch (DKey[3][2]) {   // D+
-    case  ST4_DP: KEY_PAD_PRESSED ("ST4 D+");   // Key Pressed
-      st4_delay++;
-      stepperD.setMaxSpeed(ST4_CORRECT_SPEED);
-      stepperD.run(D_FWD, ST4_CORRECT_SPEED);
-      display.fillRect(64, 120, 64, 8, BLACK);
-      display.setCursor(65, 120);
-      display.setTextColor(GREEN);  
-      display.println("ST-4 D+");
+    case  ST4_DP: KEY_PAD_PRESSED ("ST4 D+");
+      guide_start ('D', +1, 0);
+      display.fillRect(64, 120, 64, 8, BLACK); display.setCursor(65, 120); display.setTextColor(GREEN); display.println("ST-4 D+");
       break;
-    case -ST4_DP: KEY_PAD_RELEASED ("ST4 D+ clear");// Key Relesed
-      st4_delay=0;
+    case -ST4_DP: KEY_PAD_RELEASED ("ST4 D+ clear");
+      guide_stop ('D');
       display.fillRect(64, 120, 64, 8, BLACK);
-      resume_tracking=2;
       break;
   }
   switch (DKey[3][3]) {   // D-
-    case  ST4_DM: KEY_PAD_PRESSED ("ST4 D-");  // Key Down
-      st4_delay++;
-      stepperD.setMaxSpeed(ST4_CORRECT_SPEED);
-      stepperD.run(D_REV, ST4_CORRECT_SPEED);
-      display.fillRect(64, 120, 64, 8, BLACK);
-      display.setCursor(65, 120);
-      display.setTextColor(GREEN);  
-      display.println("ST-4 D-");
+    case  ST4_DM: KEY_PAD_PRESSED ("ST4 D-");
+      guide_start ('D', -1, 0);
+      display.fillRect(64, 120, 64, 8, BLACK); display.setCursor(65, 120); display.setTextColor(GREEN); display.println("ST-4 D-");
       break;
-    case -ST4_DM: KEY_PAD_RELEASED ("ST4 D- clear");   // Key Relesed
-      st4_delay=0;
+    case -ST4_DM: KEY_PAD_RELEASED ("ST4 D- clear");
+      guide_stop ('D');
       display.fillRect(64, 120, 64, 8, BLACK);
-      resume_tracking=2;
       break;
   }
   switch (DKey[3][1]) {   // H-
-    case  ST4_HM: KEY_PAD_PRESSED ("ST4 H-"); // Key Down
-      if (st4_delay==0 || st4_delay>100){
-        stepperH.setMaxSpeed(ST4_CORRECT_SPEED);
-        stepperH.run(H_REV, ST4_CORRECT_SPEED);
-        display.setTextColor(GREEN);  
-      } else {
-        display.setTextColor(RED);  
-      }
-      display.fillRect(64, 120, 64, 8, BLACK);
-      display.setCursor(65, 120);
-      display.println("ST-4 H-");
+    case  ST4_HM: KEY_PAD_PRESSED ("ST4 H-");
+      guide_start ('H', -1, 0);
+      display.fillRect(64, 120, 64, 8, BLACK); display.setCursor(65, 120); display.setTextColor(GREEN); display.println("ST-4 H-");
       break;
-    case -ST4_HM: KEY_PAD_RELEASED ("ST4 H- clear"); // Key Relesed
+    case -ST4_HM: KEY_PAD_RELEASED ("ST4 H- clear");
+      guide_stop ('H');
       display.fillRect(64, 120, 64, 8, BLACK);
-      resume_tracking=1;
       break;
   }
   switch (DKey[3][0]) {   // H+
-    case  ST4_HP: KEY_PAD_PRESSED ("ST4 H+");   // Key Down
-      if (st4_delay==0 || st4_delay>100){
-        stepperH.setMaxSpeed(ST4_CORRECT_SPEED);
-        stepperH.run(H_FWD, ST4_CORRECT_SPEED);
-        display.setTextColor(GREEN);  
-      } else {
-        display.setTextColor(RED);  
-      }
-      display.fillRect(64, 120, 64, 8, BLACK);
-      display.setCursor(65, 120);
-      display.println("ST-4 H+");
+    case  ST4_HP: KEY_PAD_PRESSED ("ST4 H+");
+      guide_start ('H', +1, 0);
+      display.fillRect(64, 120, 64, 8, BLACK); display.setCursor(65, 120); display.setTextColor(GREEN); display.println("ST-4 H+");
       break;
-    case -ST4_HP: KEY_PAD_RELEASED ("ST4 H+ clear"); // Key Relesed
+    case -ST4_HP: KEY_PAD_RELEASED ("ST4 H+ clear");
+      guide_stop ('H');
       display.fillRect(64, 120, 64, 8, BLACK);
-      resume_tracking=1;
       break;
   }
 
@@ -1120,6 +1143,7 @@ int goto_start (){
   if (ha < HA_LIMIT_EAST_H*HOUR_TO_RAD || ha > HA_LIMIT_WEST_H*HOUR_TO_RAD || fabs(dec) > PI2/4.)
     return 2;
   goto_abort ();
+  guideH.active = guideD.active = false; // a pulse ending later must not touch the slewing motors
   stop_axes_and_wait ();
   set_slew_fast.config_motor (stepperH, GOTO_SPEED);
   set_slew_fast.config_motor (stepperD, GOTO_SPEED);
@@ -2094,6 +2118,7 @@ void Communication::Process(char controlbyte) {
 	              case '*': // :Q*# or
       	        case 0: // :Q# stop slew / GOTO, return to tracking
                   goto_abort ();
+                  guideH.active = guideD.active = false;
             		  set_tracking.set_speed_motor (stepperH, tracking_rate[MOTOR_H]);
             		  stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
 		  /*
@@ -2115,6 +2140,7 @@ void Communication::Process(char controlbyte) {
                   break;
                 case '0': // :Q0# stop all motions
                   goto_abort ();
+                  guideH.active = guideD.active = false;
                   stepperH.softStop();
                   stepperD.softStop();
             		  while(stepperH.busyCheck());
@@ -2124,6 +2150,7 @@ void Communication::Process(char controlbyte) {
                   break;
                 case 'X': // :QX# Emergency Stop All
                   goto_abort ();
+                  guideH.active = guideD.active = false;
                   stepperH.hardStop(); stepperD.hardStop(); break;
                 case 'V': // :QV#  coarse fast slew -- reconfiguration will stop motor before adjusting, necessary by driver!
                   slew_rate[MOTOR_H] = slew_rate_list [slew_rate_mode[MOTOR_H] = SLEW_FFAST_HZ];
@@ -2200,6 +2227,14 @@ void Communication::Process(char controlbyte) {
                   slew_rate[MOTOR_H] = slew_rate_list [slew_rate_mode[MOTOR_H] = SLEW_FFFINE_HZ];
                   slew_rate[MOTOR_D] = slew_rate_list [slew_rate_mode[MOTOR_D] = SLEW_FFFINE_HZ];
                   break;
+                case 'g': // :RgSS.S# guide rate in arcsec/s (Meade Autostar II), max sidereal. K150: :Rg# reports it
+                  if (cmdc[3] == 0)
+                    send(String(guide_rate*SIDEREAL_ARCSEC_S, 1) + "#\n");
+                  else {
+                    float r = atof (&cmdc[3]) / SIDEREAL_ARCSEC_S;
+                    guide_rate = r < 0.05 ? 0.05 : (r > 1.0 ? 1.0 : r);
+                  }
+                  break;
                 case 'G': // :RG# Set Slew rate to Guiding Rate (slowest)
                   slew_rate[MOTOR_H] = slew_rate_list [slew_rate_mode[MOTOR_H] = SLEW_FINE_HZ];
                   slew_rate[MOTOR_D] = slew_rate_list [slew_rate_mode[MOTOR_D] = SLEW_FINE_HZ];
@@ -2267,9 +2302,15 @@ void Communication::Process(char controlbyte) {
               break; // end of 'R' -- without it :RS# fell through into :MS# (slew to target)
             case 'M': // Telescope Movement Commands (experimental)
               switch (cmdc[2]) {
-                case 'g': // :Mg[nsew]DDDD#  Guide telescope in the commanded direction (nsew) for the number of milliseconds indicated by the unsigned number passed in the command. These commands support serial port driven guiding
-                  switch (cmdc[3]) {
-                    case 'n': break;
+                case 'g': // :Mg[nsew]DDDD# pulse guide DDDD ms at guide_rate (no reply)
+                  if (goto_state == GOTO_IDLE){
+                    unsigned long ms = (unsigned long)atol (&cmdc[4]);
+                    switch (cmdc[3]) {
+                      case 'n': guide_start ('D', +1, ms); break;
+                      case 's': guide_start ('D', -1, ms); break;
+                      case 'w': guide_start ('H', +1, ms); break;
+                      case 'e': guide_start ('H', -1, ms); break;
+                    }
                   }
                   break;
                 case 'S': // :MS#  Slew to target object (:Sr/:Sd), then track. LX200 reply: 0 ok, 1<msg># below horizon, 2<msg># limits
@@ -3093,6 +3134,7 @@ void loop()
   axisH.Update ();
   axisD.Update ();
   goto_update ();
+  guide_update ();
   check_track_limit ();
 
   if (!--update_display)
@@ -3103,7 +3145,7 @@ void loop()
 
   if (track_error){ // :MT1# closed loop (once per second): steer the H rate so the axis follows the target hour angle
     track_error = 0;
-    if (goto_state == GOTO_IDLE && mount_synced){
+    if (goto_state == GOTO_IDLE && mount_synced && !guiding ()){
       long hapos = (long)(target_hour_angle ()*RAD_NS_US);
       long err   = axisH.Get() - hapos; // > 0: axis is west of (ahead of) the target -> slower
       float rate = tracking_rate[MOTOR_H] - (float)err/128./10.; // remove the error within ~10 s

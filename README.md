@@ -136,6 +136,12 @@ D position = declination (D+ = north). Zero points come from the sync.
 
 GOTO is refused until the first sync; limits are not applied before it either.
 
+### Guiding (ST-4 port or LX200 pulse guiding)
+ST-4 inputs and `:Mg[nsew]NNNN#` pulses share one engine: RA guiding runs the tracking at
+(1 +- guide rate) x sidereal (west = faster, east = slower, the RA motor never reverses);
+Dec runs at +- guide rate. Default guide rate 0.5x sidereal, set with `:RgSS.S#` (arcsec/s),
+read with `:Rg#`. PHD2 etc. calibrate the directions themselves.
+
 ### Longitude convention
 LX200: **west positive** (`:Sg+072*55#` = 72 deg 55' W). Old test notes in this repo used
 `:Sg-072:55#`; that now means 72 deg 55' **east**.
