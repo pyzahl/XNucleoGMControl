@@ -1181,11 +1181,62 @@ void check_track_limit (){
 
 
 
+// ---------------- LX200 helpers ----------------
+unsigned long startime_ms = 0L; // millis() when the local time was set (:SL#)
+
+// Parse an LX200 sexagesimal value: "sDD*MM:SS", "sDD*MM'SS", "sDDD*MM", "HH:MM:SS",
+// "HH:MM.T", "sHH.H", "DD\xdfMM"... Any character other than digits, '.', '+', '-'
+// separates the up to 3 fields; '#' or end of string terminates.
+// Returns signed seconds (of arc or of time); *ok is false if no number was found.
+long parse_sexa (const char *s, bool *ok=NULL){
+  double f[3] = { 0., 0., 0. };
+  int n = 0;
+  int sign = 1;
+  while (*s == ' ') ++s;
+  if (*s == '-'){ sign = -1; ++s; }
+  else if (*s == '+') ++s;
+  while (*s && *s != '#' && n < 3){
+    if ((*s >= '0' && *s <= '9') || *s == '.'){
+      f[n++] = atof (s);
+      while ((*s >= '0' && *s <= '9') || *s == '.') ++s;
+    } else
+      ++s;
+  }
+  if (ok) *ok = (n > 0);
+  return sign * lround (f[0]*3600. + f[1]*60. + f[2]);
+}
+
+// local civil time (s since local midnight) and local calendar date, from the AstroMini clock
+// (call Astro.calc_JD_Time_GrHrAngle(millis()) first)
+long local_time_sec (){
+  double t = fmod (((double)Astro.JDFrac() + 0.5)*86400. - Astro.TZOff()*3600., 86400.);
+  if (t < 0.) t += 86400.;
+  return (long)t;
+}
+void local_date (int &y, int &m, int &d){ // Meeus ch. 7, JD -> calendar
+  double jd = (double)Astro.JDWhole() + Astro.JDFrac() - Astro.TZOff()/24.;
+  long Z = (long)floor (jd + 0.5);
+  long A = Z;
+  if (Z >= 2299161L){
+    long alpha = (long)floor ((Z - 1867216.25)/36524.25);
+    A = Z + 1 + alpha - alpha/4;
+  }
+  long B = A + 1524;
+  long C = (long)floor ((B - 122.1)/365.25);
+  long D = (long)floor (365.25*C);
+  long E = (long)floor ((B - D)/30.6001);
+  d = (int)(B - D - (long)floor (30.6001*E));
+  m = (int)(E < 14 ? E - 1 : E - 13);
+  y = (int)(m > 2 ? C - 4716 : C - 4715);
+}
+
 class Communication {
   public:
-  Communication(const char *_id, HardwareSerial *hw_port, HardwareSerial *hw_echo_port = NULL) {
+  // strict_lx200: plain LX200 for planetarium apps (no '\n' after replies, no start banner)
+  Communication(const char *_id, HardwareSerial *hw_port, HardwareSerial *hw_echo_port = NULL, bool strict_lx200 = false) {
       id = _id;
       cmdi = 0;
+      strict = strict_lx200;
       hw_comm = hw_port;
       hw_echo = hw_echo_port;
       sw_comm = NULL;
@@ -1194,14 +1245,17 @@ class Communication {
       usb_echo = NULL;
    
 #ifdef VERBOSE_STARTUP
-      send(id);
-      send("#\n");
+      if (!strict){
+        send(id);
+        send("#\n");
+      }
 #endif
   };
 #ifdef USE_UNO
   Communication(const char *_id, SoftwareSerial *sw_port, SoftwareSerial *sw_echo_port = NULL) {
       id = _id;
       cmdi = 0;
+      strict = false;
       hw_comm = NULL;
       hw_echo = NULL;
       sw_comm = sw_port;
@@ -1219,6 +1273,7 @@ class Communication {
   Communication(const char *_id, Serial_ *usb_port, Serial_ *usb_echo_port = NULL) {
       id = _id;
       cmdi = 0;
+      strict = false;
       hw_comm = NULL;
       hw_echo = NULL;
       sw_comm = NULL;
@@ -1232,46 +1287,33 @@ class Communication {
 #endif
     };
 #endif
-    void send(const __FlashStringHelper *msg) {
+    // all output goes through out(): in strict LX200 mode (phone apps via WiFi bridge)
+    // the human-friendly '\n' after replies is dropped
+    void out(String msg) {
+      if (strict)
+        msg.replace("\n", "");
+      if (msg.length() == 0)
+        return;
       SEND(msg);
     };
+    void set_strict(bool on) { strict = on; };
 
-    void send(const char *msg) {
-      SEND(msg);
+    void send(const __FlashStringHelper *msg) { out(String(msg)); };
+    void send(const char *msg) { out(String(msg)); };
+    void send(char *msg) { out(String(msg)); };
+    void send(const String &msg) { out(msg); };
+    void send(int i) { out(String(i)); };
+    void send(long l) { out(String(l)); };
+    void send(float f) { out(String(f)); };
+    void send(double df) { out(String(df)); };
+
+    void sendi02(int i) { // two digits, zero padded
+      out((i<10 && i>=0) ? "0"+String(i) : String(i));
     };
 
-    void send(char *msg) {
-      SEND(msg);
-    };
-
-    void send(String &msg) {
-      SEND(msg);
-    };
-
-    void send(int i) {
-      SEND(i);
-    };
-
-    void sendi02(int i) {
-      if (i<10 && i>=0)
-        SEND("0");
-      SEND(i);
-    };
-
-    void sendtrue(){ SEND("1#\n"); };
-    void sendfalse(){ SEND("0#\n"); };
-    
-    void send(long l) {
-      SEND(l);
-    };
-
-    void send(float f) {
-      SEND(f);
-    };
-
-    void send(double df) {
-      SEND(df);
-    };
+    // LX200 boolean replies (:Sr :Sd :St :Sg :SL :SG ...) are a single character, no '#'
+    void sendtrue(){ out("1"); };
+    void sendfalse(){ out("0"); };
 
     void sendNewLine() {
       SEND("\n");
@@ -1318,27 +1360,20 @@ class Communication {
       return (pos*3 + pos*3/4) >> 6; // NS_U: 288*3*200 *128 / HMS: 360/60/60 = 17.06666 = 17 + 1/15 => pos/(17+1/15) = pos*(3 + 3/4) / 64
     };
 
-    void get_pos_HHMMSS(char *str){
-      int hms[3];
-      long ss;
-      get_sexi(str, hms);
-      ss = hms[0] + hms[1]*60L + hms[2]*3600L;
+    bool get_pos_HHMMSS(char *str){ // :Sr -> stored target RA
+      bool ok;
+      long ss = parse_sexa (str, &ok);
+      if (!ok || ss < 0 || ss >= 86400L) return false;
       Astro.Set_memRA ((float)ss*HSEC_TO_RAD);
-      //SetPos[0] = convert_HMSsec_to_position (ss);
+      return true;
     };
 
-    void get_pos_DDMMSS(char *str){
-      int dms[3];
-      long ss;
-      char *c = str;
-      while (*c == ' ') ++c;
-      bool negative = (*c == '-'); // sign from the text: "-00:30" has dd == 0, so dd's sign can't be used
-      get_sexi(str, dms);
-      ss = abs(dms[2])*3600L + dms[1]*60L + dms[0];
-      if (negative)
-        ss = -ss; // signed declination (GOTO model uses -90..+90 deg)
+    bool get_pos_DDMMSS(char *str){ // :Sd -> stored target Dec (signed)
+      bool ok;
+      long ss = parse_sexa (str, &ok);
+      if (!ok || labs(ss) > 324000L) return false;
       Astro.Set_memDecl ((float)ss*SEC_TO_RAD);
-      //SetPos[1] = convert_DMSsec_to_position(ss);
+      return true;
     };
 
   
@@ -1419,6 +1454,11 @@ class Communication {
       dms += String(mm)+":";
       if (ss < 10) dms += "0";
       dms += String(ss);
+    };
+    void send_sDDMM_from_sec(long sec, int ddigits=2) { // sDD*MM# / sDDD*MM# (site lat/lon)
+      String dms;
+      sDDMMSS_String_from_sec(dms, sec + (sec < 0 ? -30 : 30), ddigits); // round to minutes
+      send(dms.substring(0, dms.length()-3) + "#\n");
     };
     void send_sDDMMSS_from_sec(long sec, int ddigits=2) {
       String dms;
@@ -1576,6 +1616,7 @@ class Communication {
 #endif
     int  cmdi;
     char cmdc[MAX_CMD_LEN];
+    bool strict;
 };
 
 
@@ -1679,6 +1720,7 @@ void Communication::Process(char controlbyte) {
                   cmdi=0; break; 
                   
 #endif
+        case 0x06: send("P"); break; // <ACK> (no ':'): alignment query -> Polar (LX200), used by apps to probe the link
         case ':': cmdi = 1; break; // start command
         case '#': cmdi = 0; break; // end command
         default: break;
@@ -1845,18 +1887,22 @@ void Communication::Process(char controlbyte) {
                   send_DDMMSS_from_sec ((long)(Astro.calc_Azimuth()*RAD_TO_SEC));
                   break;
                   
-                case 'G': // :GG# Get UTC offset time
-                  send(Astro.TZOff()); send("#\n");
+                case 'G': // :GG# UTC offset sHH# (hours added to local time to yield UTC)
+                  { int z = Astro.TZOff(); send((z < 0 ? "-" : "+") + String(abs(z) < 10 ? "0" : "") + String(abs(z)) + "#\n"); }
                   break;
                 case 'H': // :GH# DST
                   send("0#\n");
                   break;
-                case 'L': // :GL# Local Time HH:MM:SS
+                case 'L': // :GL# local time HH:MM:SS#
                   Astro.calc_JD_Time_GrHrAngle (millis());
-                  send_HHMMSS_from_sec((long)(Astro.JDFrac()*24.*3600.+0.5));
+                  send_HHMMSS_from_sec (local_time_sec ());
                   break;
-                case 'C': // :GC#  Get current date. Returns: MM/DD/YY#
-                  sendi02(Astro.amonth); send("/"); sendi02(Astro.aday); send("/"); sendi02(Astro.ayear-2000); send("#\n");
+                case 'C': // :GC# current local date MM/DD/YY# (advances past midnight)
+                  { int y, m, d;
+                    Astro.calc_JD_Time_GrHrAngle (millis());
+                    local_date (y, m, d);
+                    sendi02(m); send("/"); sendi02(d); send("/"); sendi02(y % 100); send("#\n");
+                  }
                   break;
                 case 'm': // :Gm# Get distance to Meridian [Max Only]
                           // RA angle to the Meridian (LST-RA). If the scope is on a German mount, a negative
@@ -1864,19 +1910,19 @@ void Communication::Process(char controlbyte) {
                           // the value is always positive.
                   send("00:00:00#\n");
                   break;
-                case 'g': // :Gg# Get Current Site Longitude, East Longitudes are expressed as negative
-                  send_sDDMMSS_from_sec ((long)(Astro.Longitude()*RAD_TO_SEC), 3);
+                case 'g': // :Gg# site longitude sDDD*MM#, LX200: west positive
+                  send_sDDMM_from_sec ((long)(Astro.Longitude()*RAD_TO_SEC), 3);
                   //send("287*04#\n"); // 40 57.3080 N
                   //send("287:04:19#\n"); // 40 57.3080 N
                   break;
-                case 't': // :Gt# Get Site Latitude, North positive
-                  send_sDDMMSS_from_sec((long)(Astro.Latitude()*RAD_TO_SEC));
+                case 't': // :Gt# site latitude sDD*MM#, north positive
+                  send_sDDMM_from_sec((long)(Astro.Latitude()*RAD_TO_SEC), 2);
                   //send("40*57#\n"); // 72 55.6640 W
                   //send("40:57:19#\n"); // 72 55.6640 W
                   break;
-                case 'S': // :GS#  Get the Sidereal Time -- HourAngle
+                case 'S': // :GS#  local sidereal time HH:MM:SS# (= Greenwich sidereal angle - west longitude)
                   Astro.calc_JD_Time_GrHrAngle (millis());
-                  send_HHMMSS_from_sec ((long)(Astro.calc_HrAngle ()*RAD_TO_HSEC));
+                  send_HHMMSS_from_sec ((long)(wrap_pi (Astro.GrHA () - Astro.Longitude () - PI2/2.)*RAD_TO_HSEC + 43200.5));
                   break;
 #ifdef OTHER_COMANDS
                 case 'f': // :Gf# Get Browse Faint Magnitude Limit
@@ -1946,38 +1992,54 @@ void Communication::Process(char controlbyte) {
               break;
             case 'S': // S – Set Commands
               switch (cmdc[2]) {
-                case 'g': // :SgDDD*MM# Set current site’s longitude to DDD*MM an ASCII position string
-                  get_sexi(&cmdc[3], site.lon);
-                  Astro.Set_LocationSexi(site.lon, site.lat);
+                case 'g': // :SgsDDD*MM# site longitude, LX200: WEST positive (0..360 or +-180)
+                  { bool ok; long v = parse_sexa (&cmdc[3], &ok);
+                    if (v > 648000L) v -= 1296000L;
+                    if (ok && labs(v) <= 648000L){ Astro.Set_Location ((float)v*SEC_TO_RAD, Astro.Latitude()); sendtrue(); }
+                    else sendfalse();
+                  }
+                  break;
+                case 't': // :StsDD*MM# site latitude, north positive
+                  { bool ok; long v = parse_sexa (&cmdc[3], &ok);
+                    if (ok && labs(v) <= 324000L){ Astro.Set_Location (Astro.Longitude(), (float)v*SEC_TO_RAD); sendtrue(); }
+                    else sendfalse();
+                  }
+                  break;
+                case 'L': // :SLHH:MM:SS# set the local time
+                  { bool ok; long v = parse_sexa (&cmdc[3], &ok);
+                    if (ok && v >= 0L && v < 86400L){
+                      startime.hms[2] = v/3600; startime.hms[1] = (v/60)%60; startime.hms[0] = v%60;
+                      startime_ms = millis();
+                      Astro.Set_Time (startime.hms[2], startime.hms[1], startime.hms[0], startime_ms, startime.hoffset);
+                      sendtrue();
+                    } else sendfalse();
+                  }
+                  break;
+                case 'C': // :SCMM/DD/YY# set the local date (LX200); YYYY-MM-DD also accepted
+                  { int v[3] = { 0, 0, 0 }; int n = 0; const char *c = &cmdc[3];
+                    while (*c && *c != '#' && n < 3){
+                      if (*c >= '0' && *c <= '9'){ v[n++] = atoi (c); while (*c >= '0' && *c <= '9') ++c; } else ++c;
+                    }
+                    int y, m, d;
+                    if (v[0] > 31){ y = v[0]; m = v[1]; d = v[2]; } else { m = v[0]; d = v[1]; y = v[2]; }
+                    if (y < 100) y += 2000;
+                    if (n == 3 && m >= 1 && m <= 12 && d >= 1 && d <= 31){
+                      startime.ymd[2] = y; startime.ymd[1] = m; startime.ymd[0] = d;
+                      Astro.Set_Date (y, m, d);
+                      send("1Updating Planetary Data#                              #"); // Meade LX200 classic reply
+                    } else sendfalse();
+                  }
+                  break;
+                case 'G': // :SGsHH.H# hours added to local time to yield UTC (e.g. +05 for EST)
+                  startime.hoffset = (int)lround (atof (&cmdc[3]));
+                  Astro.Set_Time (startime.hms[2], startime.hms[1], startime.hms[0], startime_ms, startime.hoffset);
                   sendtrue();
                   break;
-                case 't': // :St +DDD:MM:SS# set Site Latitude
-                  get_sexi(&cmdc[3], site.lat);
-                  Astro.Set_LocationSexi(site.lon, site.lat);
-                  sendtrue();
+                case 'r': // :SrHH:MM:SS# target RA (also HH:MM.T)
+                  if (get_pos_HHMMSS(&cmdc[3])) sendtrue(); else sendfalse();
                   break;
-                case 'L': // :SL HH:MM:SS# Set the local Time 
-                  get_sexi(&cmdc[3], startime.hms);
-                  Astro.Set_Time (startime.hms[2], startime.hms[1], startime.hms[0], millis(), startime.hoffset);
-                  sendtrue();
-                  break;
-                case 'C': // :SC YYYY/MM/DD# Set the local Date
-                  get_sexi(&cmdc[3], startime.ymd);
-                  Astro.Set_Date (startime.ymd[2], startime.ymd[1], startime.ymd[0]);
-                  sendtrue();
-                  break;
-                case 'G': // ::SGsHH.H# Set the number of hours added to local time to yield UTC -- do this first!
-                  startime.hoffset = atoi(&cmdc[3]);
-                  Astro.Set_Time (startime.hms[2], startime.hms[1], startime.hms[0], millis(), startime.hoffset);
-                  sendtrue();
-                  break;
-                case 'r': // :Sr HH:MM:SS#   RA set pos (object, ...) 
-                  get_pos_HHMMSS(&cmdc[3]);
-                  sendtrue();
-                  break;
-                case 'd': // :Sd DD:MM:SS#      DE set pos (object, ...)
-                  get_pos_DDMMSS(&cmdc[3]);
-                  sendtrue();
+                case 'd': // :SdsDD*MM:SS# target Dec (also sDD*MM'SS, sDD*MM)
+                  if (get_pos_DDMMSS(&cmdc[3])) sendtrue(); else sendfalse();
                   break;
                 case 'K': // K150 pyz cmd :GK# Set telescope coordinates H;D# in raw
                   for (i = 0; cmdc[3 + i] != ';' && i < 64; ++i) tmp[i] = cmdc[3 + i];
@@ -2335,11 +2397,7 @@ void Communication::Process(char controlbyte) {
               }
               break;
               
-            case 'U': 
-              switch (cmdc[2]) {
-                case '2': send("GM K150 X-NUCLEO#\n"); break;
-                default:  send("PREC TOGGLE N/A: HIGH#\n"); break;
-              }
+            case 'U': // :U# precision toggle / :U2# 10Micron ultra precision: always high precision, no reply (LX200)
               break;
             case 'V': send("PEC N/A#\n"); break;
             case 'W': send("SITE SELECT N/A#\n"); break;
@@ -2548,8 +2606,7 @@ void setup()
   Serial.begin(SERIAL_PRG_BAUDRATE);
   Serial.println (F("THIS IS USB SERIAL PRG PP."));
   
-  Serial1.begin(SERIAL1_BAUDRATE);
-  Serial1.println (F("THIS IS SERIAL1."));
+  Serial1.begin(SERIAL1_BAUDRATE); // ESP32 WiFi bridge (planetarium apps), strict LX200 -- no banner
   
   Serial2.begin(SERIAL2_BAUDRATE);
   Serial2.println (F("THIS IS SERIAL2."));
@@ -2905,6 +2962,7 @@ void setup()
   comm_master  = new Communication ("COMM_MASTER_SERIAL",  &SerialUSB);
   comm_usb     = new Communication ("COMM_USBNATIVE", &Serial);
   comm_blue    = new Communication ("COMM_SERIAL3",  &Serial3);
+  comm_0       = new Communication ("COMM_WIFI_SERIAL1", &Serial1, NULL, true); // ESP32 WiFi bridge: SkySafari / Stellarium Mobile
 #endif
 
   startup_message_ln((const char*)F("COMM READY"), GREEN);
