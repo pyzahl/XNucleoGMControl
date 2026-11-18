@@ -364,6 +364,7 @@ AstroMini Astro;
 #define POS_REG_HALF   2097152L  // 2^21
 #define MOVE_CHUNK     2000000L  // max microsteps per MOVE command (~32.6 deg)
 #define MOT_STATUS_MASK 0x0060   // STATUS register MOT_STATUS field, 0 = stopped
+#define STATUS_NOT_BUSY 0x0002   // STATUS register BUSY bit: 1 = no command (MOVE/GOTO/stop) executing
 
 class Position {
   public:
@@ -377,12 +378,16 @@ class Position {
   void Init (){ // after driver setup: take current register as reference
       last_reg = m->getPos();
   };
-  bool isStopped (){
-      return (m->getParam(STATUS) & MOT_STATUS_MASK) == 0;
+  bool isStopped (){ // motor at rest AND no motion command pending
+      long st = m->getParam(STATUS);
+      return (st & MOT_STATUS_MASK) == 0 && (st & STATUS_NOT_BUSY);
   };
   void Update (){
+      // order matters: check "stopped" BEFORE reading the position, otherwise a motor that
+      // stops between the two reads leaves a stale position -> extra move / overshoot
+      bool stopped = goto_active && isStopped();
       Get ();
-      if (!goto_active || !isStopped())
+      if (!stopped)
         return;
       long rem = goto_pos - pos;
       if (rem == 0L){
@@ -1057,10 +1062,13 @@ Settings set_focus    (1000.0, 6000.0, 1.0, 100.0, 800.0, 35, 35, 35, 12);
 #define HA_TRACK_STOP_H     7.0  // hours: tracking (H moving west) is stopped beyond this hour angle
 #define ALT_LIMIT_DEG       0.0  // degrees: GOTO targets below this altitude are refused
 #define GOTO_SPEED        800.0  // full steps/s for GOTO slews (~1.7 deg/s; slew_rate_list max is 1600)
+#define GOTO_CORRECT_MAX      3    // max. correction passes for the sidereal drift during the slew
+#define GOTO_CORRECT_TOL    200L   // microsteps (~12 arcsec): correction finished below this
 #define HOUR_TO_RAD   (PI2/24.)
 
 enum GotoState { GOTO_IDLE, GOTO_SLEW, GOTO_CORRECT };
 GotoState goto_state = GOTO_IDLE;
+int goto_passes = 0;
 bool mount_synced = false;
 bool track_limit_hit = false;
 
@@ -1126,10 +1134,14 @@ int goto_start (){
 void goto_update (){
   if (goto_state == GOTO_IDLE || axisH.isSlewing() || axisD.isSlewing())
     return;
-  if (goto_state == GOTO_SLEW){
-    // the target moved west by the sidereal motion during the slew: one short correction move
-    axisH.Goto ((long)(target_hour_angle ()*RAD_NS_US));
+  // the target moved west by the sidereal motion during the (previous) move: short correction moves
+  long target = (long)(target_hour_angle ()*RAD_NS_US);
+  if (goto_state == GOTO_SLEW)
+    goto_passes = 0;
+  if (goto_passes < GOTO_CORRECT_MAX && labs (target - axisH.Get ()) > GOTO_CORRECT_TOL){
+    axisH.Goto (target);
     goto_state = GOTO_CORRECT;
+    ++goto_passes;
     return;
   }
   goto_state = GOTO_IDLE; // arrived
