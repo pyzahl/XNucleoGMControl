@@ -28,15 +28,27 @@ Uses: SPI.h, powerSTEP01ArduinoLibrary.h, Adafruit_GFX.h, Adafruit_SSD1351.h, Ha
 
 ## Building (Arduino IDE)
 
-1. Clone anywhere: `git clone https://github.com/pyzahl/XNucleoGMControl`
-   The sketch is `X-Nucleo-Ardu_tvat-Due/X-Nucleo-Ardu_tvat-Due.ino` (folder name = sketch name, as the IDE requires).
-2. From the repo root, copy all libraries into your sketchbook `libraries/` folder
-   (Linux `~/Arduino/libraries`, macOS `~/Documents/Arduino/libraries`):
-   ```sh
-   cp -R AstroMini_Library powerSTEP01_Arduino_Library libraries/* ~/Documents/Arduino/libraries/
-   ```
-   - `AstroMini_Library` and `powerSTEP01_Arduino_Library` are custom / locally patched — use these, not the Library Manager versions.
-   - `libraries/` holds the exact third-party versions this was built with:
-     Adafruit GFX 1.11.9, Adafruit BusIO 1.16.1, Adafruit SSD1351 1.3.2, DueTimer 1.4.7.
+The repo is laid out as a complete Arduino sketchbook:
+
+```
+XNucleoGMControl/                     <- sketchbook root
+  X-Nucleo-Ardu_tvat-Due/
+    X-Nucleo-Ardu_tvat-Due.ino        <- the sketch
+  libraries/                          <- every library the sketch needs
+    AstroMini_Library/                   custom
+    powerSTEP01_Arduino_Library/         locally patched (signed 22-bit positions) - do NOT use the Library Manager version
+    Adafruit_GFX_Library/                1.11.9
+    Adafruit_BusIO/                      1.16.1
+    Adafruit_SSD1351_library/            1.3.2
+    DueTimer/                            1.4.7
+```
+
+1. `git clone https://github.com/pyzahl/XNucleoGMControl`
+2. Make the IDE find the libraries -- either
+   - **A (simplest):** File > Preferences > *Sketchbook location* = the cloned `XNucleoGMControl` folder
+     (restart the IDE), or
+   - **B (keep your sketchbook):** run `./link-libraries.sh` -- symlinks `libraries/*` into
+     `~/Documents/Arduino/libraries` (macOS) or `~/Arduino/libraries` (Linux). Existing real folders
+     with the same name are skipped; remove them first to use the repo versions.
 3. Boards Manager: install **Arduino SAM Boards (32-bits ARM Cortex-M3)**, select **Arduino Due (Programming Port)**.
-4. Upload.
+4. Open `X-Nucleo-Ardu_tvat-Due/X-Nucleo-Ardu_tvat-Due.ino`, Verify / Upload.
