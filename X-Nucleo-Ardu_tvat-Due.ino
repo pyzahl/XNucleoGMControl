@@ -147,9 +147,9 @@ count--;
 #define STEPPER_POS_RANGE0 -2097151L  //((1L<<21)-1)
 #define STEPPER_POS_RANGEH  1048576L  // USED FOR LOOP RANGE CHECK 
 
-#define C_HH  (long)(288*3)          // Getriebeuebersetzung * Steps je Umdrehung x50 with 2nd worm drive, 60/20 x3 with belt
-#define NS_U  (long)(C_HH*200*1.0)     // at full step
-#define NS_US (long)(C_HH*200*128.0)   // at 1/128 step
+#define C_HH  (long)(288*3)          // gear ratio: 288 tooth main worm wheel x3 (60/20 belt drive) = 864 motor turns per axis revolution
+#define NS_U  (long)(C_HH*200*1.0)     // = 172800 full steps per axis revolution (200 full steps/motor rev)
+#define NS_US (long)(C_HH*200*128.0)   // = 22118400 microsteps per axis revolution at 1/128 step
 #define STAGs 86164.091
 
 #define PI2        (float)(6.28318530717958647692)
@@ -168,17 +168,17 @@ count--;
 
 #define SIDERAL_PERIOD (23.9344699*3600.0) // seconds
 #define SIDERAL_RATIO  (23.9344699/24)
-#define SIDERAL_H_HZ   ((float)NS_U / SIDERAL_PERIOD)  // = 256.7009 Hz (theoretically) vs measured via millis timer: 257.72770158, Q is which time base is better
+#define SIDERAL_H_HZ   ((float)NS_U / SIDERAL_PERIOD)  // = 2.005476 full steps/s = 256.7009 microsteps/s (theoretically) vs measured via millis timer: 257.72770158, Q is which time base is better
 
-#define GT_CONVERT60HZ  (60.0*SIDERAL_PERIOD/(float)NS_U)   // = 15402.054
-#define ST_CONVERT60HZ  ((float)NS_U/(60.0*SIDERAL_PERIOD)) // = 0.0000649264049
+#define GT_CONVERT60HZ  (60.0*SIDERAL_PERIOD/(float)NS_U)   // = 29.918087
+#define ST_CONVERT60HZ  ((float)NS_U/(60.0*SIDERAL_PERIOD)) // = 0.0334246
 #define TR_ADJUST01HZ   (ST_CONVERT60HZ*0.1)
 
 #define SOLAR_PERIOD (24.0*3600.0) // seconds
-#define SOLAR_H_HZ   ((float)NS_U / SOLAR_PERIOD)  // = 267.3967712676 Hz
+#define SOLAR_H_HZ   ((float)NS_U / SOLAR_PERIOD)  // = 2.000000 full steps/s = 256.0 microsteps/s
 
 #define LUNAR_PERIOD (24.0*3600.0+50.0*60.0) // seconds
-#define LUNAR_H_HZ   ((float)NS_U / LUNAR_PERIOD)  // = 267.3967712676 Hz
+#define LUNAR_H_HZ   ((float)NS_U / LUNAR_PERIOD)  // = 1.932886 full steps/s = 247.41 microsteps/s
 
 #define SLEW_FINE_HZ        0  // fine 1
 #define SLEW_FFINE_HZ       1  // fine 2
