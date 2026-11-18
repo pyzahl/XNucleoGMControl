@@ -5,11 +5,17 @@
  */
 
 
-#define DEG_TO_RAD 0.01745329
-#define RAD_TO_DEG 57.29577951308
+#ifndef DEG_TO_RAD
+#define DEG_TO_RAD 0.017453292519943295769
+#endif
+#ifndef RAD_TO_DEG
+#define RAD_TO_DEG 57.295779513082320877
+#endif
 #define RAD_TO_HMS 3.819718634205
-#define PI 3.141592654
-#define TWOPI 6.28318531
+#ifndef PI
+#define PI 3.1415926535897932385
+#endif
+#define TWOPI 6.283185307179586477
 #define RAD_TO_SEC 206264.8062471
 #define RAD_TO_HSEC 13750.98708314
 #define SEC_TO_RAD  0.00000484813681109536
@@ -18,8 +24,10 @@
 
 #include <HardwareSerial.h>
 
-// 40 57.3080 N (Lat)  (north positive) 40.955133
-// 72 55.6640 W (Lon)  (east positove) -72.927733
+// Longitude convention = LX200 (:Sg/:Gg): WEST POSITIVE, east negative.
+//   hour angle = Greenwich sidereal angle - Lon - RA
+// default site: 40 57.3080 N (Lat, north positive) 40.955133
+//               72 55.6640 W (Lon, west positive)   72.927733
 
 #define ASTROMINI_ALL
 
@@ -27,7 +35,7 @@ class AstroMini{
  public:
   AstroMini (int hr=23, int min=0, int sec=0, int z=6,
 	     int m=3, int d=3,int y=2019,
-	     float lon=-72.927733*DEG_TO_RAD, float lat=40.955133*DEG_TO_RAD);
+	     float lon=72.927733*DEG_TO_RAD, float lat=40.955133*DEG_TO_RAD);
 
   void Set_Time (int hr, int min, int sec, unsigned long millis0=0L, int z=6);
   void Set_Date (int y, int m, int d);

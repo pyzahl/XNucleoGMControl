@@ -100,30 +100,35 @@ void AstroMini::sun_pos (){
 };
 #endif
 
+static float wrap_2pi (double a){ // -> [0, 2pi)
+    a = fmod (a, TWOPI);
+    if (a < 0.) a += TWOPI;
+    return (float)a;
+}
+
 float AstroMini::calc_RA_from_hrangle (float hrangle){ // in RAD!!
-    RA = GrHrAngle-Lon-hrangle;
-    if (RA < 0)
-      RA += TWOPI;
-    return RA; // in RAD
+    RA = wrap_2pi ((double)GrHrAngle-Lon-hrangle);
+    return RA; // in RAD, [0, 2pi)
 }
   
 void AstroMini::calc_JD_Time_GrHrAngle (unsigned long ms){
+    // double precision (64 bit on the Due): float alone limits sidereal time to ~4 arcsec
     ms -= ms0;
     JD_whole=JulianDate(ayear,amonth,aday);
-    JD_frac=(ahour+zone+aminute/60.+asecond/3600.+ms/3600000.)/24.-.5;
-    T=JD_whole-2451545; T=(T+JD_frac)/36525.;
-
+    double frac=(ahour+zone+aminute/60.+asecond/3600.+ms/3600000.)/24.-.5;
+    JD_frac=frac;
     JDx=JD_whole-2451545;
-    GrHrAngle=280.46061837+(360*JDx)%360+.98564736629*JDx+360.98564736629*JD_frac;
-    GrHrAngle=DEG_TO_RAD*fmod(GrHrAngle,360.); // RAD now!
+    double D=(double)JDx+frac;     // days since J2000.0
+    T=D/36525.;
+    double gmst=fmod(280.46061837+360.98564736629*D, 360.); // Meeus 12.4 (without T^2 terms, < 0.1s)
+    if (gmst < 0.) gmst += 360.;
+    GrHrAngle=DEG_TO_RAD*gmst; // RAD now!
 }
 
 float AstroMini::calc_HrAngle (){
     // now update with RA, Decl
-    HrAngle=GrHrAngle-Lon-RA; // East Longitudes are expressed as negative
-    if (HrAngle < 0)
-      HrAngle += TWOPI;
-    return HrAngle;
+    HrAngle=wrap_2pi((double)GrHrAngle-Lon-RA); // Lon west positive (LX200)
+    return HrAngle; // [0, 2pi)
 }
 
 float AstroMini::calc_Elevation (){
