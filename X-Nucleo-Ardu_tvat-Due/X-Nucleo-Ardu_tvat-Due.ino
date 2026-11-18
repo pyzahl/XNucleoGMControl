@@ -146,9 +146,6 @@ count--;
 
 */
 
-#define STEPPER_POS_RANGE   4194304L  // (1<<22)
-#define STEPPER_POS_RANGE0 -2097151L  //((1L<<21)-1)
-#define STEPPER_POS_RANGEH  1048576L  // USED FOR LOOP RANGE CHECK 
 
 #define C_HH  (long)(288*3)          // gear ratio: 288 tooth main worm wheel x3 (60/20 belt drive) = 864 motor turns per axis revolution
 #define NS_U  (long)(C_HH*200*1.0)     // = 172800 full steps per axis revolution (200 full steps/motor rev)
@@ -357,104 +354,79 @@ AstroMini Astro;
 
 
 
-// Manage Motor Position (+/- 2^21) internally only
-// NS_US =(long)(C_HH*200*128.0)   // at 1/128 step
+// Axis position in 1/128 microsteps, kept in software as a signed 32 bit value
+// (+/-2^31 = +/-97 axis revolutions). The powerSTEP01 ABS_POS register is only 22 bit:
+// it is left free running and only its change since the last reading is accumulated,
+// so it must be read (Update/Get) at least every ~10 s at full slew speed.
+// Moves are split into chunks < 2^22 steps (MOVE N_STEP is a 22 bit field) and are
+// only issued while the motor is stopped (the driver rejects MOVE while running).
+#define POS_REG_RANGE  4194304L  // 2^22
+#define POS_REG_HALF   2097152L  // 2^21
+#define MOVE_CHUNK     2000000L  // max microsteps per MOVE command (~32.6 deg)
+#define MOT_STATUS_MASK 0x0060   // STATUS register MOT_STATUS field, 0 = stopped
+
 class Position {
   public:
-  Position (powerSTEP *motor, long initial_pos=0L) {
-      ip = 0;
-      tip = 0;
-      distance = 0;
-      goto_pos = -1;
-      last_reading = 0;
+  Position (powerSTEP *motor) {
       m = motor;
+      pos = 0L;
+      last_reg = 0L;
+      goto_pos = 0L;
+      goto_active = false;
+  };
+  void Init (){ // after driver setup: take current register as reference
+      last_reg = m->getPos();
+  };
+  bool isStopped (){
+      return (m->getParam(STATUS) & MOT_STATUS_MASK) == 0;
   };
   void Update (){
-      if (goto_pos >= 0)
-        Goto(goto_pos);
-      else
-        Get();
-      // loop detection
-      if (last_reading-mp > STEPPER_POS_RANGEH)
-        ++ip;
-      if (last_reading-mp < -STEPPER_POS_RANGEH)
-        --ip;
-      last_reading = mp;
+      Get ();
+      if (!goto_active || !isStopped())
+        return;
+      long rem = goto_pos - pos;
+      if (rem == 0L){
+        goto_active = false; // arrived
+        return;
+      }
+      long n = labs(rem);
+      if (n > MOVE_CHUNK) n = MOVE_CHUNK;
+      m->move(rem > 0L ? FWD:REV, (unsigned long)n);
   };
   void Abort (){
-      goto_pos = -1;
-      distance = 0;
+      goto_active = false;
   };
-  void Goto(long p){
-      int tip;
-      long tmp;
-      long fin;
+  void Goto (long p){ // caller stops the motor first; Update() then drives it to p
       goto_pos = p;
-      Get ();
-      tmp = p-pos;
-      distance = tmp/NS_PER_DEG;
-      tip = tmp/(STEPPER_POS_RANGE);
-      if (m->busyCheck() || tmp == 0L)
-        return;
-        
-      if (tip != 0){
-        //Serial.println(" * GOTO: MOVE"+String(pos)+" -> "+String(p)+" ["+String(tip)+", Delta="+String(tmp)+"]");
-        m->move(tip>0?FWD:REV, STEPPER_POS_RANGE);
-        if (tip>0)
-          --tip;
-        else
-          ++tip;
-      } else {
-        fin = p%STEPPER_POS_RANGE;
-        //Serial.println(" * GOTO: FINAL"+String(pos)+" -> "+String(p)+" ["+String(tmp)+"]");
-        m->goToDir(tmp>0?FWD:REV, fin - STEPPER_POS_RANGE0);
-        goto_pos = -1; // completed
-        distance = 0;
-      }
+      goto_active = true;
   };
-  int Distance(){
-      return abs(distance);
+  int Distance (){ // remaining whole degrees (rounded up), 0 if not slewing
+      if (!goto_active) return 0;
+      return (int)((labs(goto_pos - pos) + NS_US/360 - 1) / (NS_US/360));
   };
-  int isSlewing(){ return goto_pos > 0 ? 1:0; };
-  long Get() {
-      mp = m->getPos();
-      pos = STEPPER_POS_RANGE*ip + mp + STEPPER_POS_RANGE0;
+  int isSlewing (){ return goto_active ? 1:0; };
+  long Get (){
+      long reg = m->getPos();
+      long d = reg - last_reg;
+      if (d >= POS_REG_HALF)       d -= POS_REG_RANGE;
+      else if (d < -POS_REG_HALF)  d += POS_REG_RANGE;
+      pos += d;
+      last_reg = reg;
       return pos;
   };
-  float Get_DEG_Angle() {
-    Get ();
-    return (float)NS_US_DEG * pos;
-  };
-  float Get_DEGSEC_Angle() {
-    Get ();
-    return (float)NS_US_DEGSEC * pos;
-  };
-  float Get_HMSEC_Angle() {
-    Get ();
-    return (float)NS_US_HMSEC * pos;
-  };
-  float Get_RAD_Angle() {
-    Get ();
-    return (float)NS_US_RAD * pos;
-  };
-  float Get_HR_Angle() {
-    Get ();
-    return (float)NS_US_HMS * pos;
-  };
-  void Set(long p) { 
+  float Get_DEG_Angle()    { Get (); return (float)NS_US_DEG * pos; };
+  float Get_DEGSEC_Angle() { Get (); return (float)NS_US_DEGSEC * pos; };
+  float Get_HMSEC_Angle()  { Get (); return (float)NS_US_HMSEC * pos; };
+  float Get_RAD_Angle()    { Get (); return (float)NS_US_RAD * pos; };
+  float Get_HR_Angle()     { Get (); return (float)NS_US_HMS * pos; };
+  void Set (long p){ // redefine current position (sync) -- motor may keep running
+      Get ();
       pos = p;
-      ip  = pos/STEPPER_POS_RANGE;
-      mp  = (pos%STEPPER_POS_RANGE) - STEPPER_POS_RANGE0;
-      m->setPos(mp);
-      last_reading = mp;
   };
-  int distance;
-  int tip;
-  int  ip;
   long pos;
-  long mp;
+  long last_reg;
   long goto_pos;
-  long last_reading;
+  bool goto_active;
   powerSTEP *m;
 };
 
@@ -1073,6 +1045,125 @@ Settings set_tracking (1000.0, 6000.0, 1.0, 100.0, 100.0, 35, 35, 45, 12); // ne
 Settings set_focus    (1000.0, 6000.0, 1.0, 100.0, 800.0, 35, 35, 35, 12);
 
 
+// ============================ GOTO / MOUNT MODEL ============================
+// German mount, used on ONE pier side only (no meridian flip):
+//   H axis position = hour angle  (0 = meridian, H_FWD = west = HA increasing = tracking direction)
+//   D axis position = declination (0 = equator,  D_FWD = north)
+// both in 1/128 microsteps, RAD_NS_US per radian. The zero points come from a sync (:CM#),
+// which must be done with the tube on its normal side (counterweight below the axis).
+// Until the first sync GOTO is refused and no tracking limit is applied.
+#define HA_LIMIT_EAST_H    -6.5  // hours: most eastern hour angle a GOTO may target
+#define HA_LIMIT_WEST_H     6.5  // hours: most western hour angle a GOTO may target
+#define HA_TRACK_STOP_H     7.0  // hours: tracking (H moving west) is stopped beyond this hour angle
+#define ALT_LIMIT_DEG       0.0  // degrees: GOTO targets below this altitude are refused
+#define GOTO_SPEED        800.0  // full steps/s for GOTO slews (~1.7 deg/s; slew_rate_list max is 1600)
+#define HOUR_TO_RAD   (PI2/24.)
+
+enum GotoState { GOTO_IDLE, GOTO_SLEW, GOTO_CORRECT };
+GotoState goto_state = GOTO_IDLE;
+bool mount_synced = false;
+bool track_limit_hit = false;
+
+float wrap_pi (float a){ // -> (-pi, pi]
+  a = fmod (a, PI2);
+  if (a > PI2/2.)        a -= PI2;
+  else if (a <= -PI2/2.) a += PI2;
+  return a;
+}
+
+// hour angle (signed, rad) of the stored target object (:Sr/:Sd) right now
+float target_hour_angle (){
+  Astro.calc_JD_Time_GrHrAngle (millis());
+  Astro.Use_memRADecl ();
+  return wrap_pi (Astro.calc_HrAngle ());
+}
+
+void stop_axes_and_wait (){
+  stepperH.softStop();
+  stepperD.softStop();
+  while (!axisH.isStopped() || !axisD.isStopped())
+    axisH.Get(), axisD.Get(); // keep position bookkeeping going
+}
+
+void start_tracking (){ // H axis at tracking rate, D stopped, tracking power settings
+  set_tracking.config_motor (stepperH, slew_rate[MOTOR_H]);
+  set_slew_slow.config_motor (stepperD, slew_rate[MOTOR_D]);
+  stepperH.run (tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
+}
+
+void goto_abort (){ // stop a running GOTO (both axes), motors are stopped
+  if (goto_state != GOTO_IDLE || axisH.isSlewing() || axisD.isSlewing()){
+    axisH.Abort ();
+    axisD.Abort ();
+    goto_state = GOTO_IDLE;
+    stepperH.softStop();
+    stepperD.softStop();
+  }
+}
+
+// :MS# -- 0: slewing, 1: below horizon, 2: outside limits / not synced
+int goto_start (){
+  if (!mount_synced)
+    return 2;
+  float ha  = target_hour_angle ();          // also sets Astro RA/Decl/HrAngle for the altitude check
+  float dec = Astro.Get_memDecl ();
+  if (Astro.calc_Elevation () < ALT_LIMIT_DEG*DEG_TO_RAD)
+    return 1;
+  if (ha < HA_LIMIT_EAST_H*HOUR_TO_RAD || ha > HA_LIMIT_WEST_H*HOUR_TO_RAD || fabs(dec) > PI2/4.)
+    return 2;
+  goto_abort ();
+  stop_axes_and_wait ();
+  set_slew_fast.config_motor (stepperH, GOTO_SPEED);
+  set_slew_fast.config_motor (stepperD, GOTO_SPEED);
+  axisH.Goto ((long)(ha*RAD_NS_US));
+  axisD.Goto ((long)(dec*RAD_NS_US));
+  goto_state = GOTO_SLEW;
+  track_limit_hit = false;
+  return 0;
+}
+
+// call from loop(): advances the GOTO sequence slew -> short correction -> tracking
+void goto_update (){
+  if (goto_state == GOTO_IDLE || axisH.isSlewing() || axisD.isSlewing())
+    return;
+  if (goto_state == GOTO_SLEW){
+    // the target moved west by the sidereal motion during the slew: one short correction move
+    axisH.Goto ((long)(target_hour_angle ()*RAD_NS_US));
+    goto_state = GOTO_CORRECT;
+    return;
+  }
+  goto_state = GOTO_IDLE; // arrived
+  start_tracking ();
+}
+
+// sync current pointing to the stored target object (:CM#); motors keep running
+void sync_to_target (){
+  goto_abort ();
+  float ha = target_hour_angle ();
+  axisH.Set ((long)(ha*RAD_NS_US));
+  axisD.Set ((long)(Astro.Get_memDecl ()*RAD_NS_US));
+  mount_synced = true;
+  track_limit_hit = false;
+}
+
+// call from loop(): stop the H axis if it moves west beyond the tracking limit (only after a sync)
+void check_track_limit (){
+  if (!mount_synced || goto_state != GOTO_IDLE)
+    return;
+  if (axisH.Get () > (long)(HA_TRACK_STOP_H*HOUR_TO_RAD*RAD_NS_US)){
+    int st = stepperH.getParam (STATUS);
+    if ((st & MOT_STATUS_MASK) && (st & 0x0010)){ // running, DIR bit = forward (H_FWD) = west
+      stepperH.softStop ();
+      if (!track_limit_hit){
+        track_limit_hit = true;
+        Serial.println ("TRACKING STOPPED: west hour angle limit reached");
+      }
+    }
+  }
+}
+// ============================================================================
+
+
 
 #ifdef SERIAL_ECHO
 # ifdef DISPLAY_ECHO
@@ -1244,8 +1335,8 @@ class Communication {
       bool negative = (*c == '-'); // sign from the text: "-00:30" has dd == 0, so dd's sign can't be used
       get_sexi(str, dms);
       ss = abs(dms[2])*3600L + dms[1]*60L + dms[0];
-      if (negative && ss > 0)
-        ss = 1296000L - ss; // keep existing convention: negative declination stored as 360 deg - |dec|
+      if (negative)
+        ss = -ss; // signed declination (GOTO model uses -90..+90 deg)
       Astro.Set_memDecl ((float)ss*SEC_TO_RAD);
       //SetPos[1] = convert_DMSsec_to_position(ss);
     };
@@ -1344,13 +1435,17 @@ class Communication {
          //     nbytes_read = sscanf(data, "%g,%g,%c,%g,%g,%g,%d,%d#", &Ginfo.RA_JNOW, &Ginfo.DEC_JNOW, &Ginfo.SideOfPier,
          //     &Ginfo.AZ, &Ginfo.ALT, &Ginfo.Jdate, &Ginfo.Gstat, &Ginfo.SlewStatus);
         int gs = GSTAT_STOPPED;
-        if (stepperH.busyCheck() || stepperD.busyCheck())
+        if (!axisH.isStopped())
           gs = GSTAT_TRACKING;
-        if (axisH.isSlewing() || axisD.isSlewing())
+        if (track_limit_hit)
+          gs = GSTAT_TRACKING_OUTSIDE_LIMITS;
+        if (goto_state != GOTO_IDLE || axisH.isSlewing() || axisD.isSlewing())
           gs = GSTAT_SLEWING_OR_STOPPING;
         Astro.calc_JD_Time_GrHrAngle (millis());
         Astro.Set_Decl (axisD.Get_RAD_Angle());
-        send(String(Astro.calc_RA_from_hrangle (axisH.Get_RAD_Angle())*RAD_TO_HMS, 8)+","+String(axisD.Get_DEG_Angle(), 8)+","); 
+        float ra = Astro.calc_RA_from_hrangle (axisH.Get_RAD_Angle());
+        Astro.calc_HrAngle (); // HrAngle for Az/Alt below
+        send(String(ra*RAD_TO_HMS, 8)+","+String(axisD.Get_DEG_Angle(), 8)+","); 
         send("E"); send(","); 
         send(String(Astro.calc_Azimuth ()*RAD_TO_DEG, 8)+","+String(Astro.calc_Elevation ()*RAD_TO_DEG, 8)+","); 
         send(String(Astro.JDWhole ())+String(Astro.JDFrac (), 8).substring(1)+","+String(gs)+","+String(axisH.Distance()+axisD.Distance())+"#\n"); // GrHA="+String(Astro.GrHA (), 8)+" HA="+String(Astro.HA (), 8)+" M-HA="+String(axisH.Get_HR_Angle (), 8)+"#\n");
@@ -1635,22 +1730,14 @@ void Communication::Process(char controlbyte) {
             case 'C': // Sync Control
               switch (cmdc[2]) {
                 case 'M': // :CM#  Synchronizes the telescope's position with the currently selected database object's coordinates. Returns " Object#"
-                  // stop any slewing, motions, sync to position last set
-                  stepperH.softStop();
-                  stepperD.softStop();
-                  while(stepperH.busyCheck());
-                  while(stepperD.busyCheck());
-
-                  Astro.calc_JD_Time_GrHrAngle (millis());
-                  Astro.Use_memRADecl ();
-                  axisH.Set((long)(Astro.calc_HrAngle ()*RAD_NS_US));
-                  axisD.Set((long)(Astro.Get_memDecl ()*RAD_NS_US)); // SetPos[1]);
+                  // define current pointing = stored target (:Sr/:Sd); tracking keeps running
+                  sync_to_target ();
                   
                   //send(String(Astro.GrHA (), 8)+","+String(Astro.calc_HrAngle (), 8)+","+String(axisH.Get_RAD_Angle(), 8)+" SYNC W OBJ#\n");
                   //send(" *HA: "+String(Astro.HA()*RAD_TO_DEG, 8)+", Lon:"+String(Astro.Longitude()*RAD_TO_DEG,8)+"#\n"); 
                   //send(" *AXIS: "+String(axisH.Get_DEG_Angle(), 8)+" memRA: "+String(Astro.Get_memRA()*RAD_TO_DEG,8)+"#\n"); 
                   //send(" *RA: "+String(Astro.calc_RA_from_hrangle (axisH.Get_RAD_Angle())*RAD_TO_DEG, 8)+"#\n"); 
-                  send(" *SYNC W OBJ and TRK#\n"); // OK.
+                  send(" *SYNCED#\n");
                   break; // @@@@@
               }
               break;
@@ -1754,6 +1841,7 @@ void Communication::Process(char controlbyte) {
                   Astro.calc_JD_Time_GrHrAngle (millis());
                   Astro.Set_Decl (axisD.Get_RAD_Angle());
                   Astro.calc_RA_from_hrangle (axisH.Get_RAD_Angle());
+                  Astro.calc_HrAngle ();
                   send_DDMMSS_from_sec ((long)(Astro.calc_Azimuth()*RAD_TO_SEC));
                   break;
                   
@@ -1849,8 +1937,8 @@ void Communication::Process(char controlbyte) {
               send("NA#\n");
               break;
             case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
-              // Distance() is in 1/128 deg units (microsteps / full steps per deg): one bar per deg, rounded up, max 32
-              i = (axisH.Distance() + axisD.Distance() + 127) / 128;
+              // one bar per degree still to go, max 32; empty = slew finished
+              i = axisH.Distance() + axisD.Distance();
               if (i > 32) i = 32;
               for (; i > 0; --i)
                 send("-");
@@ -1914,9 +2002,8 @@ void Communication::Process(char controlbyte) {
             case 'Q': // Q – Movement Commands
               switch (cmdc[2]) {
 	              case '*': // :Q*# or
-      	        case 0: // :Q# stop slew, return to tracking if in FINE mode
-                  axisH.Abort ();
-                  axisD.Abort ();
+      	        case 0: // :Q# stop slew / GOTO, return to tracking
+                  goto_abort ();
             		  set_tracking.set_speed_motor (stepperH, tracking_rate[MOTOR_H]);
             		  stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
 		  /*
@@ -1937,8 +2024,7 @@ void Communication::Process(char controlbyte) {
 		  */
                   break;
                 case '0': // :Q0# stop all motions
-                  axisH.Abort ();
-                  axisD.Abort ();
+                  goto_abort ();
                   stepperH.softStop();
                   stepperD.softStop();
             		  while(stepperH.busyCheck());
@@ -1947,8 +2033,7 @@ void Communication::Process(char controlbyte) {
             		  set_tracking.set_speed_motor (stepperD, slew_rate[MOTOR_D]);
                   break;
                 case 'X': // :QX# Emergency Stop All
-                  axisH.Abort ();
-                  axisD.Abort ();
+                  goto_abort ();
                   stepperH.hardStop(); stepperD.hardStop(); break;
                 case 'V': // :QV#  coarse fast slew -- reconfiguration will stop motor before adjusting, necessary by driver!
                   slew_rate[MOTOR_H] = slew_rate_list [slew_rate_mode[MOTOR_H] = SLEW_FFAST_HZ];
@@ -1974,31 +2059,39 @@ void Communication::Process(char controlbyte) {
             		  set_slew_slow.config_motor (stepperH, slew_rate[MOTOR_H]);
             		  set_slew_slow.config_motor (stepperD, slew_rate[MOTOR_D]);
                   break;
-                case 'w': // :Qw# slew west
-                  //break;
-                case 'R': // :QR#  H+ RA+++ slew
+                case 'w': // :Qw# halt westward slew (LX200) -> back to tracking
+                case 'e': // :Qe# halt eastward slew  (LX200) -> back to tracking
+                  stepperH.softStop();
+                  set_tracking.set_speed_motor (stepperH, tracking_rate[MOTOR_H]);
+                  stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
+                  break;
+                case 'n': // :Qn# halt northward slew (LX200)
+                case 's': // :Qs# halt southward slew (LX200)
+                  stepperD.softStop();
+                  break;
+                case 'R': // :QR#  H+ RA+++ slew (K150)
+                  goto_abort ();
                   stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
                   stepperH.run(H_FWD, slew_rate[MOTOR_H]);
                   break;
-                case 'e': // :Qe# slew east
-                  //break;
-                case 'r': // :Qr#  H- RA--- slew
+                case 'r': // :Qr#  H- RA--- slew (K150)
+                  goto_abort ();
                   stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
                   stepperH.run(H_REV, slew_rate[MOTOR_H]);
                   break;
-                case 'n': // :Qn# slew north
-                  //break;
-                case 'D': // :QD#  D+  DE+++ slew
+                case 'D': // :QD#  D+  DE+++ slew (K150)
+                  goto_abort ();
                   stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
                   stepperD.run(D_FWD, slew_rate[MOTOR_D]);
                   break;
-                case 's': // :Qs# slew south
-                  //break;
-                case 'd': // :Qd#   D-  DE--- slew
+                case 'd': // :Qd#   D-  DE--- slew (K150)
+                  goto_abort ();
                   stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
                   stepperD.run(D_REV, slew_rate[MOTOR_D]);
                   break;
-                case 'M': // K150 pyz cmd :=QMnnnn;nnnn# request Hn, Dn rel movement in raw
+                case 'M': // K150 pyz cmd :=QMnnnn;nnnn# request Hn, Dn absolute move in raw microsteps (no tracking afterwards)
+                  goto_abort ();
+                  stop_axes_and_wait ();
                   for (i = 0; cmdc[3 + i] != ';' && i < 64; ++i) tmp[i] = cmdc[3 + i];
                   tmp[i] = 0;
                   axisH.Goto(atol(tmp));
@@ -2089,23 +2182,32 @@ void Communication::Process(char controlbyte) {
                     case 'n': break;
                   }
                   break;
-                case 'S': // :MS#  Slew to Target object (cur pos), track
-                  // slew to mem position set last
-
-                  Astro.calc_JD_Time_GrHrAngle (millis());
-                  Astro.Use_memRADecl ();
-                  axisH.Goto((long)(Astro.calc_HrAngle ()*RAD_NS_US));
-                  axisD.Goto((long)(Astro.Get_memDecl ()*RAD_NS_US));
-                  sendfalse();
-                  send (" *SLEWING TO OBJ...#\n");
-
-                  // RECURSIVE CHECK/RA->HA UPDATE, FINAL ENABLE TRACKING
-                  //slew_rate[MOTOR_H] = slew_rate_list [slew_rate_mode[MOTOR_H] = SLEW_FINE_HZ];
-                  //set_tracking.config_motor (stepperH, slew_rate[MOTOR_H]);
-                  //tracking_rate[MOTOR_H] = SIDERAL_H_HZ;
-                  //stepperH.setMaxSpeed(tracking_rate[MOTOR_H]);
-                  stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);                
-
+                case 'S': // :MS#  Slew to target object (:Sr/:Sd), then track. LX200 reply: 0 ok, 1<msg># below horizon, 2<msg># limits
+                  switch (goto_start ()){
+                    case 0: send("0"); break;
+                    case 1: send("1Object below horizon#"); break;
+                    default: send(mount_synced ? "2Object outside mount limits#" : "2Not synced - sync (:CM#) first#"); break;
+                  }
+                  break;
+                case 'n': // :Mn# move north at current slew rate (until :Qn# or :Q#)
+                  goto_abort ();
+                  stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
+                  stepperD.run(D_FWD, slew_rate[MOTOR_D]);
+                  break;
+                case 's': // :Ms# move south
+                  goto_abort ();
+                  stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
+                  stepperD.run(D_REV, slew_rate[MOTOR_D]);
+                  break;
+                case 'w': // :Mw# move west (HA increasing)
+                  goto_abort ();
+                  stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
+                  stepperH.run(H_FWD, slew_rate[MOTOR_H]);
+                  break;
+                case 'e': // :Me# move east (HA decreasing)
+                  goto_abort ();
+                  stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
+                  stepperH.run(H_REV, slew_rate[MOTOR_H]);
                   break;
                 case 'T': // :MTbool# auto track HR angle error and correct, bool = 0,1
                   auto_track_HAbyRA = atoi (&cmdc[3]);
@@ -2705,6 +2807,8 @@ void setup()
                                    // disable switch (not using as hard stop)
 
   stepperD.getStatus(); // clears error flags
+  axisH.Init(); // take current driver position registers as reference
+  axisD.Init();
   startup_message_ln((const char*)F("OK"), GREEN);
 
 
@@ -2895,16 +2999,18 @@ void controller_isr(){
 
 void loop()
 {
-  long hapos;
   static int DKey[4][4];
   if (key_pad_enable) {
     if (KeyChg(DKey)) {
+      goto_abort (); // any hand box / ST-4 activity cancels a running GOTO
       KeyPadComand(DKey);
     }
   }
 
   axisH.Update ();
   axisD.Update ();
+  goto_update ();
+  check_track_limit ();
 
   if (!--update_display)
     comm_master->update_coords_display ();
@@ -2912,31 +3018,17 @@ void loop()
   if (!--clear_errors)
     Clear_I2C_Error ();
 
-  if (track_error){
-    Astro.calc_JD_Time_GrHrAngle (millis());
-    Astro.Use_memRADecl ();
-    hapos=(long)(Astro.calc_HrAngle ()*RAD_NS_US);
-    track_error = axisH.Get() - hapos;
-    // Serial.println(" *TKErr="+String(track_error) + "steps, " + String((float)track_error*NS_US_DEG,8) + "deg TRH=" +String(tracking_rate[MOTOR_H],8) + " SPD=" + String(stepperH.getCurrentSpeed(),8));
-    Serial.println(String(millis()) + ", " + String((float)track_error*NS_US_DEG*3600,8)+", "+String(tracking_rate[MOTOR_H],8)+", "+String(hapos)+", "+String(axisH.Get()) );
-
-    if (abs(track_error) > 50.){
-      axisH.Goto(hapos);
-      //tracking_rate[MOTOR_H] = SIDERAL_H_HZ;
-    } else {
-      tracking_rate[MOTOR_H] += (float)track_error*2e-6;
-  
-      if (tracking_rate[MOTOR_H] < SIDERAL_H_HZ/10.)
-        tracking_rate[MOTOR_H] = SIDERAL_H_HZ/10.;
-  
-      if (tracking_rate[MOTOR_H] > 10*SIDERAL_H_HZ)
-        tracking_rate[MOTOR_H] = 10*SIDERAL_H_HZ;
-  
-      //stepperH.setMaxSpeed(tracking_rate[MOTOR_H]);
-      //set_tracking.config_motor (stepperH, slew_rate[MOTOR_H]);
-      stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
+  if (track_error){ // :MT1# closed loop (once per second): steer the H rate so the axis follows the target hour angle
+    track_error = 0;
+    if (goto_state == GOTO_IDLE && mount_synced){
+      long hapos = (long)(target_hour_angle ()*RAD_NS_US);
+      long err   = axisH.Get() - hapos; // > 0: axis is west of (ahead of) the target -> slower
+      float rate = tracking_rate[MOTOR_H] - (float)err/128./10.; // remove the error within ~10 s
+      if (rate < 0.5*tracking_rate[MOTOR_H]) rate = 0.5*tracking_rate[MOTOR_H];
+      if (rate > 1.5*tracking_rate[MOTOR_H]) rate = 1.5*tracking_rate[MOTOR_H];
+      stepperH.run(tracking_dir[MOTOR_H], rate);
+      Serial.println(String(millis()) + ", " + String((float)err*NS_US_DEG*3600,3)+"\", "+String(rate,6)+", "+String(hapos)+", "+String(axisH.pos));
     }
-    track_error=0;
   }
 
   comm_master->CheckAndProcess();
