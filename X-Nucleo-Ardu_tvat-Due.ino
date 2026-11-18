@@ -1244,11 +1244,13 @@ class Communication {
     void get_pos_DDMMSS(char *str){
       int dms[3];
       long ss;
+      char *c = str;
+      while (*c == ' ') ++c;
+      bool negative = (*c == '-'); // sign from the text: "-00:30" has dd == 0, so dd's sign can't be used
       get_sexi(str, dms);
-      if (dms[2] > 0)
-        ss = dms[0] + dms[1]*60L + dms[2]*3600L;
-      else
-        ss = 1296000L - dms[0] - dms[1]*60L + dms[2]*3600L;
+      ss = abs(dms[2])*3600L + dms[1]*60L + dms[0];
+      if (negative && ss > 0)
+        ss = 1296000L - ss; // keep existing convention: negative declination stored as 360 deg - |dec|
       Astro.Set_memDecl ((float)ss*SEC_TO_RAD);
       //SetPos[1] = convert_DMSsec_to_position(ss);
     };
