@@ -71,6 +71,46 @@ WiFi/TCP (Android + iOS) or classic Bluetooth SPP (Android only).
 
 Both are 3.3 V logic: no level shifter. Serial1 runs 19200 baud in strict LX200 mode.
 
+**Module:** Espressif **ESP32-DevKitC V4 with ESP32-WROOM-32E** (or a 30-pin "ESP32 DevKit V1"
+clone with a WROOM-32 module). Use **ESP32-DevKitC-32UE** (u.FL antenna socket) if the electronics
+sit in a metal box. Avoid WROVER modules (their PSRAM occupies GPIO16/17) and ESP32-C3/C6/S2
+(different chip, sketch would need changes). Build it as *ESP32 Dev Module* (Boards Manager:
+*esp32 by Espressif*).
+
+**Power:** WiFi peaks ~250 mA. If the Due runs from 12 V on its barrel jack, do not load its
+5 V regulator with the ESP32 -- power the ESP32 from its own USB (power bank / charger) or a small
+12->5 V buck converter, and keep GND connected to the Due. On USB-powered setups the Due 5V pin is fine.
+
+### Due pin map (as used by the firmware)
+
+Check this against your own wiring -- the Uno-layout X-NUCLEO shields needed rewiring on the Due,
+and only the firmware side is documented here. The shields themselves only reach the Uno-style
+header (D0-D13, A0-A5); pins 14-21 are on the Due's extended header.
+
+| Due pin | Use |
+|---|---|
+| 0 / 1 | `Serial` (programming port USB) -- console, main.py |
+| native USB | `SerialUSB` -- console (`comm_master`) |
+| 4 | SD card CS (SD disabled, pin held HIGH) |
+| 5 | powerSTEP nBUSY (defined, not used -- status read via SPI) |
+| 6 | OLED SSD1351 RST |
+| 7 | OLED SSD1351 DC |
+| 8 | powerSTEP nSTBY/nRESET (all 3 boards) |
+| 9 | powerSTEP STCK (defined, not used) |
+| 10 | powerSTEP nCS (daisy chain H, D, F) |
+| 52 | OLED SSD1351 CS |
+| SPI header (ICSP) MOSI/MISO/SCK | powerSTEP + OLED (+ SD) -- on the Due SPI is only on this header, not D11-D13 |
+| 14 / 15 | `Serial3` TX3/RX3 -- HM-10 BLE (9600 baud), normal console protocol |
+| 16 / 17 | `Serial2` TX2/RX2 -- opened at 19200, **free / unused** |
+| **18 / 19** | **`Serial1` TX1/RX1 -- ESP32 WiFi bridge (strict LX200, 19200 baud)** |
+| 20 / 21 | I2C SDA/SCL -- MCP23017 keypad + ST-4 (address 0x24) |
+
+**If 18/19 are taken by your rewiring:** use the free `Serial2` (pins 16/17) instead -- in the
+Due sketch change `comm_0 = new Communication ("COMM_WIFI_SERIAL1", &Serial1, NULL, true);` to
+`&Serial2` (both run 19200). Or replace the HM-10 on `Serial3` (pins 14/15, already wired) with
+the ESP32: use `&Serial3` there, remove the `comm_blue` line, and set `SERIAL3_BAUDRATE` to 19200
+(the start-up `AT` probe on Serial3 can stay; the bridge drops data until a client connects).
+
 **App settings:** join WiFi `GM-K150` (password `k150mount`), mount *Meade LX200 Classic*
 (SkySafari) / *LX200* (Stellarium Mobile Plus), WiFi/TCP `192.168.4.1` port `4030`.
 Let the app set time and location on connect.
