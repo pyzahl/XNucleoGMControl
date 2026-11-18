@@ -2,6 +2,34 @@
 
 German Mount Telescope Motor Control
 
+## History of the K150
+
+<table><tr>
+<td width="55%"><img src="docs/history/k150-1995.jpeg" alt="The K150 in 1995"><br><sub>1995: the new K150 on its home-built German mount</sub></td>
+<td width="45%"><img src="docs/history/k150-today.png" alt="The K150 today"><br><sub>Today: Arduino Due controller on the mount ("not so mobile")</sub></td>
+</tr></table>
+
+- **1995** -- a year after Shoemaker-Levy 9: built my own telescope, the **K150**, a 150 mm
+  Schiefspiegler, f/20, f = 3000 mm, on a home-built German equatorial mount with a big custom
+  brass worm wheel (288 mm, 288 teeth) and a second 1:50 worm stage.
+  The steppers ran at 1/8 microstep through **IMT901** stepper controllers, driven bare-metal by an
+  **80386 PC under MS-DOS**: the software took over the timer and stepped the motors directly
+  through the parallel port ("Stepper Motor Control IMT901 for German Equatorial Mount PyZ1998" --
+  that banner still lived on in the first Arduino sketch).
+  Images came from a home-built CCD camera with a TI **TC211** sensor:
+  <img src="docs/history/k150-jupiter-saturn-tc211.png" alt="Jupiter and Saturn, TC211 CCD" height="40">
+  Jupiter & Saturn as seen by the K150.
+- Mostly dormant through the post-doc years.
+- **2016-2020** -- revived: the MS-DOS software became a self-contained Arduino controller.
+  First `ardu_tvat` on an Uno with a dual stepper shield (2016), then ST X-NUCLEO-IHM03A1 powerSTEP01
+  drivers (2018), LX200 command set, a Kivy app and Raspberry Pi control (2018-2019), and finally the
+  Arduino Due with three axes (hour, declination, focuser), OLED display, I2C hand box and ST-4
+  input (2020). The mechanics got new motors and a 60/20 belt in place of the second worm stage,
+  now at 1/128 microsteps -- good enough for photography at f = 3000 mm.
+- **2023** -- published here.
+- **2026** -- the parts that never got finished: working GOTO and sync, LX200 for phone planetarium
+  apps and INDI/KStars/PyStarLight, an ESP32 WiFi bridge, and proper guiding (ST-4 and pulse guiding).
+
 Implemented basic "LX200 protcol" http://www.meade.com/support/TelescopeProtocol_2010-10.pdf (via USB Serial)
 
 Using ST Motor Driver Modules adapted for Arduino Due (See code for pin out, required a slight rerouting for Due)
