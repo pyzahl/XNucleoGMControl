@@ -1313,6 +1313,32 @@ class Communication {
       DDMMSS_String_from_sec(dms, sec);
       send(dms+"#\n");
     };
+
+    // signed angle sDD*MM:SS (LX200 Dec/Lat) or sDDD*MM:SS (ddigits=3, Longitude);
+    // input arc-seconds, any range -- wrapped to (-180, +180] deg (e.g. 350 deg -> -10 deg)
+    void sDDMMSS_String_from_sec(String &dms, long sec, int ddigits=2, String sep="*") {
+      int dd, mm, ss;
+      sec %= 1296000L;
+      if (sec > 648000L)   sec -= 1296000L;
+      if (sec <= -648000L) sec += 1296000L;
+      dms += sec < 0 ? "-" : "+";
+      sec = abs(sec);
+      dd = sec / 3600L;
+      mm = numberOfMinutes (sec);
+      ss = numberOfSeconds (sec);
+      if (ddigits > 2 && dd < 100) dms += "0";
+      if (dd < 10) dms += "0";
+      dms += String(dd)+sep;
+      if (mm < 10) dms += "0";
+      dms += String(mm)+":";
+      if (ss < 10) dms += "0";
+      dms += String(ss);
+    };
+    void send_sDDMMSS_from_sec(long sec, int ddigits=2) {
+      String dms;
+      sDDMMSS_String_from_sec(dms, sec, ddigits);
+      send(dms+"#\n");
+    };
     void send_DDMMSS(long pos) {
       //  SERIAL_ECHO_PORT.print(pos); SERIAL_ECHO_PORT.print("\n");
       send_DDMMSS_from_sec (convert_position_to_DMSsec (pos));
@@ -1382,7 +1408,7 @@ class Communication {
           display.setCursor(c1, 10); display.println(s[1]); s[1]="";
         }
         
-        DDMMSS_String_from_sec(s[1], (long)(drad*RAD_TO_SEC),"\xf8");
+        sDDMMSS_String_from_sec(s[1], (long)(drad*RAD_TO_SEC), 2, "\xf8");
         display.setTextColor(RED);  
         display.setCursor(c1, 10); display.println(s[1]);
 
@@ -1394,7 +1420,7 @@ class Communication {
           s[3]=""; s[4]="";
         }
         DDMMSS_String_from_sec(s[3], (long)(Astro.calc_Azimuth ()*RAD_TO_SEC),"\xf8");
-        DDMMSS_String_from_sec(s[4], (long)(Astro.calc_Elevation ()*RAD_TO_SEC),"\xf8");
+        sDDMMSS_String_from_sec(s[4], (long)(Astro.calc_Elevation ()*RAD_TO_SEC), 2, "\xf8");
         display.setTextColor(RED);  
         display.setCursor(c1, 25); display.println(s[3]);
         display.setCursor(c1, 35); display.println(s[4]);
@@ -1713,14 +1739,14 @@ void Communication::Process(char controlbyte) {
                   break;
                   
                 case 'D': // :GD# Get Telescope Declination. Returns: sDD*MM# or sDD*MM’SS#:GZ#
-                  send_DDMMSS_from_sec ((long)axisD.Get_DEGSEC_Angle());
+                  send_sDDMMSS_from_sec ((long)axisD.Get_DEGSEC_Angle());
                   break;
                   
                 case 'r': // :Gr# Get current/target object RA
                   send_HHMMSS_from_sec ((long)(Astro.Get_memRA ()*RAD_HSEC)); 
                   break;
                 case 'd': // :Gd# Get current/target object DE
-                  send_DDMMSS_from_sec ((long)(Astro.Get_memDecl ()*RAD_SEC));
+                  send_sDDMMSS_from_sec ((long)(Astro.Get_memDecl ()*RAD_SEC));
                   break;
 #ifdef DEBUG_EXTRA
                 case '*': // :G*#
@@ -1756,12 +1782,12 @@ void Communication::Process(char controlbyte) {
                   send("00:00:00#\n");
                   break;
                 case 'g': // :Gg# Get Current Site Longitude, East Longitudes are expressed as negative
-                  send_DDMMSS_from_sec ((long)(Astro.Longitude()*RAD_TO_SEC));
+                  send_sDDMMSS_from_sec ((long)(Astro.Longitude()*RAD_TO_SEC), 3);
                   //send("287*04#\n"); // 40 57.3080 N
                   //send("287:04:19#\n"); // 40 57.3080 N
                   break;
                 case 't': // :Gt# Get Site Latitude, North positive
-                  send_DDMMSS_from_sec((long)(Astro.Latitude()*RAD_TO_SEC));
+                  send_sDDMMSS_from_sec((long)(Astro.Latitude()*RAD_TO_SEC));
                   //send("40*57#\n"); // 72 55.6640 W
                   //send("40:57:19#\n"); // 72 55.6640 W
                   break;
