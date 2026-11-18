@@ -25,3 +25,18 @@ Code is configured for Arduino Due Platform, but fairly poratble.
 Uses: SPI.h, powerSTEP01ArduinoLibrary.h, Adafruit_GFX.h, Adafruit_SSD1351.h, HardwareSerial.h, DueTimer.h, AstroMini_Library.h, Wire.h
 
 
+
+## Building (Arduino IDE)
+
+1. Clone into a folder named like the sketch (the IDE requires this):
+   `git clone https://github.com/pyzahl/XNucleoGMControl X-Nucleo-Ardu_tvat-Due`
+2. Copy all libraries into your sketchbook `libraries/` folder
+   (Linux `~/Arduino/libraries`, macOS `~/Documents/Arduino/libraries`):
+   ```sh
+   cp -R AstroMini_Library powerSTEP01_Arduino_Library libraries/* ~/Documents/Arduino/libraries/
+   ```
+   - `AstroMini_Library` and `powerSTEP01_Arduino_Library` are custom / locally patched — use these, not the Library Manager versions.
+   - `libraries/` holds the exact third-party versions this was built with:
+     Adafruit GFX 1.11.9, Adafruit BusIO 1.16.1, Adafruit SSD1351 1.3.2, DueTimer 1.4.7.
+3. Boards Manager: install **Arduino SAM Boards (32-bits ARM Cortex-M3)**, select **Arduino Due (Programming Port)**.
+4. Upload.
