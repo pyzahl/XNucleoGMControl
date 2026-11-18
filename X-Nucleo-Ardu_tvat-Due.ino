@@ -29,6 +29,7 @@
 //#define  VERBOSE_ECHO
 #define  VERBOSE_STARTUP
 #define USE_TIMER
+//#define USE_SD  // SD card support (unused, caused trouble) -- CS pin is still held HIGH
 
 #include <SPI.h>
 #include <powerSTEP01ArduinoLibrary.h>
@@ -47,9 +48,11 @@
 #include <DueTimer.h>
 #endif
 
+#ifdef USE_SD
 #include <SD.h>
 
 File myFile;
+#endif
 
 
 #include <AstroMini_Library.h>
@@ -2554,6 +2557,7 @@ void setup()
 #endif
 
 
+#ifdef USE_SD
   if (!SD.begin(SD_CS_PIN)) {
     startup_message_ln("SD init: failed", RED);
     startup_message_string("SD error: "+String(SD.errorCode())+"\n", RED);
@@ -2563,6 +2567,7 @@ void setup()
     //File root = SD.open("/");
     //printDirectory(root, 0);
   }
+#endif
   
   // Configure powerSTEP
   // Motor 1 (stepperH)
