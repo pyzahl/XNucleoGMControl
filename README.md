@@ -28,9 +28,9 @@ Uses: SPI.h, powerSTEP01ArduinoLibrary.h, Adafruit_GFX.h, Adafruit_SSD1351.h, Ha
 
 ## Building (Arduino IDE)
 
-1. Clone into a folder named like the sketch (the IDE requires this):
-   `git clone https://github.com/pyzahl/XNucleoGMControl X-Nucleo-Ardu_tvat-Due`
-2. Copy all libraries into your sketchbook `libraries/` folder
+1. Clone anywhere: `git clone https://github.com/pyzahl/XNucleoGMControl`
+   The sketch is `X-Nucleo-Ardu_tvat-Due/X-Nucleo-Ardu_tvat-Due.ino` (folder name = sketch name, as the IDE requires).
+2. From the repo root, copy all libraries into your sketchbook `libraries/` folder
    (Linux `~/Arduino/libraries`, macOS `~/Documents/Arduino/libraries`):
    ```sh
    cp -R AstroMini_Library powerSTEP01_Arduino_Library libraries/* ~/Documents/Arduino/libraries/
