@@ -973,21 +973,12 @@ void KeyPadComand(int DKey[4][4]) {
               bitClear (key_pad_led_status, 1);
           }
       }
-      if (resume_tracking & 2)
-          stepperH.softStop();
-          if (tdh){
-              //stepperH.setMaxSpeed(tracking_rate[MOTOR_H]);
-              stepperH.run(tdh>0? H_FWD:H_REV, tracking_rate[MOTOR_H]);
-              bitSet   (key_pad_led_status, tdh>0? 0:1);
-              bitClear (key_pad_led_status, tdh>0? 1:0);
-          } else {
-              bitClear (key_pad_led_status, 0);
-              bitClear (key_pad_led_status, 1);
-          }
+      if (resume_tracking & 2){ // D (or focus) key released: stop that motor only, leave H tracking alone
           if (focus_mode)
             stepperF.softStop();
           else
             stepperD.softStop();
+      }
   }
 
   // skip though slew rates 
