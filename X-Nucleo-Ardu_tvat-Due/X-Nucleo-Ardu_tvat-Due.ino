@@ -1646,23 +1646,23 @@ void Communication::CheckAndProcess() {
   char controlbyte;
   // send data only when you receive data:
 
+  // handle everything that is waiting (was one byte per loop pass -> slow replies),
+  // bounded so the motor/keypad loop keeps running under a flood
+  int n;
   if (hw_comm)
-    if (hw_comm->available() > 0) {
-      // read the incoming byte:
+    for (n = 0; n < 64 && hw_comm->available() > 0; ++n){
       controlbyte = hw_comm->read();
       Process (controlbyte);
     }
 
   if (sw_comm)
-    if (sw_comm->available() > 0) {
-      // read the incoming byte:
+    for (n = 0; n < 64 && sw_comm->available() > 0; ++n){
       controlbyte = sw_comm->read();
       Process (controlbyte);
     }
 
   if (usb_comm)
-    if (usb_comm->available() > 0) {
-      // read the incoming byte:
+    for (n = 0; n < 64 && usb_comm->available() > 0; ++n){
       controlbyte = usb_comm->read();
       Process (controlbyte);
     }
@@ -1681,6 +1681,11 @@ void Communication::Process(char controlbyte) {
     if (sw_echo)
       sw_echo->print (controlbyte);
 #endif
+
+    // strict LX200 port (apps): the single-character quick commands below would move motors
+    // on any stray byte outside ':...#' (e.g. after a lost ':') -- only accept ':' and <ACK> there
+    if (cmdi == 0 && strict && controlbyte != ':' && controlbyte != 0x06)
+      return;
 
     if (cmdi == 0) {
 
@@ -1968,6 +1973,19 @@ void Communication::Process(char controlbyte) {
                   send(String(tracking_rate[MOTOR_D], 4) + "#\n");
                   break;
 
+                case 'W': // :GW# status <mount><tracking><alignment>#: G = German equatorial, T/N tracking, 1/0 synced
+                  send(String("G") + (axisH.isStopped() ? "N" : "T") + (mount_synced ? "1" : "0") + "#\n");
+                  break;
+                case 'c': // :Gc# clock format
+                  send("24#\n");
+                  break;
+                case 'A': // :GA# telescope altitude sDD*MM:SS#
+                  Astro.calc_JD_Time_GrHrAngle (millis());
+                  Astro.Set_Decl (axisD.Get_RAD_Angle());
+                  Astro.calc_RA_from_hrangle (axisH.Get_RAD_Angle());
+                  Astro.calc_HrAngle ();
+                  send_sDDMMSS_from_sec ((long)(Astro.calc_Elevation()*RAD_TO_SEC));
+                  break;
                 case 'V': // Firmware
                   switch (cmdc[3]) {
                     case 'D': send(VERSION_FWDATE1); break;
@@ -1982,17 +2000,12 @@ void Communication::Process(char controlbyte) {
                   break;
               }
               break;
-            case 'h': // Home Position Commands
-              send("NA#\n");
-              break;
-            case 'H': // Time Format Commands
-              send("24#\n");
-              break;
-            case 'I': // Initialize Commands
-              send("#\n");
-              break;
-            case 'L': // Obj Lib Commands
-              send("NA#\n");
+            // not supported, and LX200 defines no reply for these -> stay silent
+            // (an unexpected 'NA#' would be read as the answer to the app's next command)
+            case 'h': // :hP# :hR# ... park / home
+            case 'H': // :H# 12/24h toggle (always 24h, see :Gc#)
+            case 'I': // :I# initialize
+            case 'L': // :L..# object library
               break;
             case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
               // one bar per degree still to go, max 32; empty = slew finished
@@ -2052,6 +2065,9 @@ void Communication::Process(char controlbyte) {
                   break;
                 case 'd': // :SdsDD*MM:SS# target Dec (also sDD*MM'SS, sDD*MM)
                   if (get_pos_DDMMSS(&cmdc[3])) sendtrue(); else sendfalse();
+                  break;
+                case 'w': // :SwN# max slew rate N=2..8 deg/s -- GOTO_SPEED is fixed, accept
+                  sendtrue();
                   break;
                 case 'K': // K150 pyz cmd :GK# Set telescope coordinates H;D# in raw
                   for (i = 0; cmdc[3 + i] != ';' && i < 64; ++i) tmp[i] = cmdc[3 + i];
@@ -2411,8 +2427,8 @@ void Communication::Process(char controlbyte) {
               
             case 'U': // :U# precision toggle / :U2# 10Micron ultra precision: always high precision, no reply (LX200)
               break;
-            case 'V': send("PEC N/A#\n"); break;
-            case 'W': send("SITE SELECT N/A#\n"); break;
+            case 'V': break; // PEC: not supported, no reply
+            case 'W': break; // :W1..4# site select: no reply (single site)
 
 
           // various, dummy
@@ -2424,11 +2440,8 @@ void Communication::Process(char controlbyte) {
               
             case 'g': // :getalst# ...
               switch (cmdc[2]) {
-                case 'e': send("0#\n"); break;
-                case '#': // GPS
-                  send("GPS N/A#\n");
-                  break;
-                default:  send("E?#\n"); break;
+                case 'e': send("0#\n"); break; // 10Micron :getalst#
+                default:  break;                 // :g+# :g-# GPS on/off: no reply
               }
               break;
 
