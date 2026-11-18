@@ -1982,6 +1982,7 @@ void Communication::Process(char controlbyte) {
                   for (i = 0; cmdc[3 + i + j] != '#' && i < 64; ++i) tmp[i] = cmdc[3 + i + j];
                   tmp[i] = 0;
                   axisD.Goto(atol(tmp));
+                  break;
                 default:
                   break;
               }
@@ -2056,6 +2057,7 @@ void Communication::Process(char controlbyte) {
                   }
                   break;
               }
+              break; // end of 'R' -- without it :RS# fell through into :MS# (slew to target)
             case 'M': // Telescope Movement Commands (experimental)
               switch (cmdc[2]) {
                 case 'g': // :Mg[nsew]DDDD#  Guide telescope in the commanded direction (nsew) for the number of milliseconds indicated by the unsigned number passed in the command. These commands support serial port driven guiding
