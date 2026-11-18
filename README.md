@@ -19,7 +19,9 @@ German Mount Telescope Motor Control
   Images came from a home-built CCD camera with a TI **TC211** sensor:
   <img src="docs/history/k150-jupiter-saturn-tc211.png" alt="Jupiter and Saturn, TC211 CCD" height="40">
   Jupiter & Saturn as seen by the K150.
-- Mostly dormant through the post-doc years.
+- Mostly dormant through the post-doc years -- and after the move it still ran "here" on the
+  original software, on a very ancient 386 ThinkPad with a black & white display under
+  OS/2 Warp / MS-DOS, until the Arduino took over.
 - **2016-2020** -- revived: the MS-DOS software became a self-contained Arduino controller.
   First `ardu_tvat` on an Uno with a dual stepper shield (2016), then ST X-NUCLEO-IHM03A1 powerSTEP01
   drivers (2018), LX200 command set, a Kivy app and Raspberry Pi control (2018-2019), and finally the
