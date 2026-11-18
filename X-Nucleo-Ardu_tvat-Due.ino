@@ -117,12 +117,12 @@ byte key_pad_led_status = 0;
 int key_pad_enable = 0;
 
 int auto_track_HAbyRA = 0;
-long track_error=0L;
+volatile long track_error=0L;
 long track_error_dt=0L;
 
-byte update_display = 0;
+volatile byte update_display = 0;
 int  i2c_error = 0;
-byte clear_errors = 0;
+volatile byte clear_errors = 0;
 
 
 /*
@@ -949,7 +949,6 @@ void KeyPadComand(int DKey[4][4]) {
       }
       display.fillRect(64, 120, 64, 8, BLACK);
       display.setCursor(65, 120);
-      display.setTextColor(GREEN);  
       display.println("ST-4 H+");
       break;
     case -ST4_HP: KEY_PAD_RELEASED ("ST4 H+ clear"); // Key Relesed
@@ -986,10 +985,12 @@ void KeyPadComand(int DKey[4][4]) {
       stepperH.softStop();
       stepperD.softStop();
       KEY_PAD_PRESSED ("11 SLR++%");   
-      slew_i = ++slew_i % NUM_SLEW_RATES;
+      slew_i = (slew_i + 1) % NUM_SLEW_RATES;
       slew_rate[0] = slew_rate[1] = slew_rate_list [slew_i];
       if(slew_i > 2)
           bitSet (key_pad_led_status, 3);
+      else
+          bitClear (key_pad_led_status, 3);
       display.fillRect(0, 120, 64, 8, BLACK);
       display.setCursor(0, 120);
       display.setTextColor(ORANGE);  
@@ -1158,7 +1159,7 @@ class Communication {
     };
 
     void sendi02(int i) {
-      if (i<10 && i>0)
+      if (i<10 && i>=0)
         SEND("0");
       SEND(i);
     };
