@@ -1092,6 +1092,7 @@ Settings set_focus    (1000.0, 6000.0, 1.0, 100.0, 800.0, 35, 35, 35, 12);
 enum GotoState { GOTO_IDLE, GOTO_SLEW, GOTO_CORRECT };
 GotoState goto_state = GOTO_IDLE;
 int goto_passes = 0;
+bool goto_parking = false; // current GOTO is a park: no tracking at the end
 bool mount_synced = false;
 bool track_limit_hit = false;
 
@@ -1127,6 +1128,7 @@ void goto_abort (){ // stop a running GOTO (both axes), motors are stopped
     axisH.Abort ();
     axisD.Abort ();
     goto_state = GOTO_IDLE;
+    goto_parking = false;
     stepperH.softStop();
     stepperD.softStop();
   }
@@ -1150,6 +1152,7 @@ int goto_start (){
   axisH.Goto ((long)(ha*RAD_NS_US));
   axisD.Goto ((long)(dec*RAD_NS_US));
   goto_state = GOTO_SLEW;
+  goto_parking = false;
   track_limit_hit = false;
   return 0;
 }
@@ -1169,7 +1172,27 @@ void goto_update (){
     return;
   }
   goto_state = GOTO_IDLE; // arrived
+  if (goto_parking){
+    goto_parking = false;    // parked: motors stay stopped until the next GOTO / :Q# / hand box
+    return;
+  }
   start_tracking ();
+}
+
+// :hP# -- park at the pole (HA 0, Dec +90 = counterweight down), no tracking. Needs a sync.
+void goto_park (){
+  if (!mount_synced)
+    return;
+  goto_abort ();
+  guideH.active = guideD.active = false;
+  stop_axes_and_wait ();
+  set_slew_fast.config_motor (stepperH, GOTO_SPEED);
+  set_slew_fast.config_motor (stepperD, GOTO_SPEED);
+  axisH.Goto (0L);
+  axisD.Goto ((long)(PI2/4.*RAD_NS_US));
+  goto_passes = GOTO_CORRECT_MAX; // fixed position: no sidereal correction passes
+  goto_state = GOTO_CORRECT;
+  goto_parking = true;
 }
 
 // sync current pointing to the stored target object (:CM#); motors keep running
@@ -1761,7 +1784,11 @@ void Communication::Process(char controlbyte) {
                   cmdi=0; break; 
                   
 #endif
-        case 0x06: send("P"); break; // <ACK> (no ':'): alignment query -> Polar (LX200), used by apps to probe the link
+        case 0x06: // <ACK> (no ':'): alignment query -> Polar (LX200). Only apps / INDI send it:
+                   // from now on this port speaks strict LX200 (no '\n', no quick commands)
+          strict = true;
+          send("P");
+          break;
         case ':': cmdi = 1; break; // start command
         case '#': cmdi = 0; break; // end command
         default: break;
@@ -1836,14 +1863,12 @@ void Communication::Process(char controlbyte) {
                   while(stepperF.busyCheck());
                   stepperF.setMaxSpeed(focus_rate);
                   stepperF.run(FWD, focus_rate);
-                  send(" *F+#\n");
                   break;
                 case '-': // :F-# Start Focuser moving outward (away from objective)
                   stepperF.softStop();
                   while(stepperF.busyCheck());
                   stepperF.setMaxSpeed(focus_rate);
                   stepperF.run(REV, focus_rate);
-                  send(" *F-#\n");
                   break;
                 case 'N': // :FN Snnn# Start Focuser moving nnn steps
                   num = atoi(&cmdc[3]);
@@ -1862,9 +1887,9 @@ void Communication::Process(char controlbyte) {
                 case 'C': // :FC ...# configure Focus Motor
                   //set_focus.set_speed_motor (stepperF, focus_rate);
                   break;
-                case 'S': // :FS# Stop Focuser movments
+                case 'S': // :FS# K150: stop focuser (LX200: slow speed) -- no reply
+                case 'Q': // :FQ# LX200: halt focuser (INDI focus abort)
                   stepperF.softStop();
-                  send(" *FStop#\n");
                   break;
                 case 'P': // :FP# Get Focus Position index
                   send(String(stepperF.getPos())+" * Focus Index#\n");
@@ -1997,6 +2022,9 @@ void Communication::Process(char controlbyte) {
                   send(String(tracking_rate[MOTOR_D], 4) + "#\n");
                   break;
 
+                case 'M': // :GM# site 1 name
+                  send("GM-K150#\n");
+                  break;
                 case 'W': // :GW# status <mount><tracking><alignment>#: G = German equatorial, T/N tracking, 1/0 synced
                   send(String("G") + (axisH.isStopped() ? "N" : "T") + (mount_synced ? "1" : "0") + "#\n");
                   break;
@@ -2026,7 +2054,9 @@ void Communication::Process(char controlbyte) {
               break;
             // not supported, and LX200 defines no reply for these -> stay silent
             // (an unexpected 'NA#' would be read as the answer to the app's next command)
-            case 'h': // :hP# :hR# ... park / home
+            case 'h': // :hP# park: GOTO the pole (HA 0, Dec +90, counterweight down), tracking off. No reply.
+              if (cmdc[2] == 'P') goto_park ();
+              break;
             case 'H': // :H# 12/24h toggle (always 24h, see :Gc#)
             case 'I': // :I# initialize
             case 'L': // :L..# object library
@@ -2034,6 +2064,7 @@ void Communication::Process(char controlbyte) {
             case 'D': // Distance Bars :D# Requests a string of bars indicating the distance to the current target location.
               // one bar per degree still to go, max 32; empty = slew finished
               i = axisH.Distance() + axisD.Distance();
+              if (i == 0 && goto_state != GOTO_IDLE) i = 1; // between correction passes: still slewing
               if (i > 32) i = 32;
               for (; i > 0; --i)
                 send("-");
@@ -2178,12 +2209,14 @@ void Communication::Process(char controlbyte) {
                   break;
                 case 'w': // :Qw# halt westward slew (LX200) -> back to tracking
                 case 'e': // :Qe# halt eastward slew  (LX200) -> back to tracking
+                  if (guideH.active){ guide_stop ('H'); break; }
                   stepperH.softStop();
                   set_tracking.set_speed_motor (stepperH, tracking_rate[MOTOR_H]);
                   stepperH.run(tracking_dir[MOTOR_H], tracking_rate[MOTOR_H]);
                   break;
                 case 'n': // :Qn# halt northward slew (LX200)
                 case 's': // :Qs# halt southward slew (LX200)
+                  if (guideD.active){ guide_stop ('D'); break; }
                   stepperD.softStop();
                   break;
                 case 'R': // :QR#  H+ RA+++ slew (K150)
@@ -2320,23 +2353,30 @@ void Communication::Process(char controlbyte) {
                     default: send(mount_synced ? "2Object outside mount limits#" : "2Not synced - sync (:CM#) first#"); break;
                   }
                   break;
-                case 'n': // :Mn# move north at current slew rate (until :Qn# or :Q#)
+                // :Mn/:Ms/:Mw/:Me move at the current slew rate until :Q[nsew]# or :Q#.
+                // At the guide rate (:RG#, how INDI guides without pulse commands) they go through
+                // the guide engine instead: tracking +- guide_rate, the RA motor never reverses.
+                case 'n': // :Mn# move north
                   goto_abort ();
+                  if (slew_rate_mode[MOTOR_D] == SLEW_FINE_HZ){ guide_start ('D', +1, 0); break; }
                   stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
                   stepperD.run(D_FWD, slew_rate[MOTOR_D]);
                   break;
                 case 's': // :Ms# move south
                   goto_abort ();
+                  if (slew_rate_mode[MOTOR_D] == SLEW_FINE_HZ){ guide_start ('D', -1, 0); break; }
                   stepperD.setMaxSpeed(slew_rate[MOTOR_D]);
                   stepperD.run(D_REV, slew_rate[MOTOR_D]);
                   break;
                 case 'w': // :Mw# move west (HA increasing)
                   goto_abort ();
+                  if (slew_rate_mode[MOTOR_H] == SLEW_FINE_HZ){ guide_start ('H', +1, 0); break; }
                   stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
                   stepperH.run(H_FWD, slew_rate[MOTOR_H]);
                   break;
                 case 'e': // :Me# move east (HA decreasing)
                   goto_abort ();
+                  if (slew_rate_mode[MOTOR_H] == SLEW_FINE_HZ){ guide_start ('H', -1, 0); break; }
                   stepperH.setMaxSpeed(slew_rate[MOTOR_H]);
                   stepperH.run(H_REV, slew_rate[MOTOR_H]);
                   break;

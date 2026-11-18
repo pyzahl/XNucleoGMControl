@@ -14,7 +14,7 @@ Used by: **S** = SkySafari (Meade LX200 Classic), **St** = Stellarium (desktop /
 
 | Command | Meaning | Reply | Status | Used by |
 |---|---|---|---|---|
-| `<ACK>` (0x06, no `:`) | alignment mode query / link probe | `P` (no `#`) | ok | S St I |
+| `<ACK>` (0x06, no `:`) | alignment mode query / link probe; **switches that port to strict LX200** | `P` (no `#`) | ok | S St I |
 | `:GR#` | telescope RA | `HH:MM:SS#` | ok | S St I |
 | `:GD#` | telescope Dec | `sDD*MM:SS#` | ok | S St I |
 | `:Sr HH:MM:SS#` (also `HH:MM.T`) | target RA | `1` / `0` | ok | S St I |
@@ -23,10 +23,11 @@ Used by: **S** = SkySafari (Meade LX200 Classic), **St** = Stellarium (desktop /
 | `:CM#` | sync to target | `<text>#` | ok | S St I |
 | `:Q#` | stop all slews (resume tracking) | -- | ok | S St I |
 | `:D#` | distance bars | `-...#`, `#` when done | ok | I |
-| `:Mn# :Ms# :Me# :Mw#` | move N/S/E/W at slew rate | -- | ok | S St I |
+| `:Mn# :Ms# :Me# :Mw#` | move N/S/E/W at slew rate; after `:RG#` via the guide engine (INDI guiding without pulse cmd) | -- | ok | S St I |
 | `:Qn# :Qs# :Qe# :Qw#` | halt that direction | -- | ok | S St I |
 | `:RG# :RC# :RM# :RS#` | slew rate guide/center/find/max | -- | ok | S St I |
 | `:U#` | precision toggle | -- | silent (always high) | S I |
+| `:hP#` | park: pole, counterweight down, tracking off (needs a sync) | -- | ok | I |
 
 ## Site, time, date (sent on connect if the app is set to)
 
@@ -42,6 +43,7 @@ Used by: **S** = SkySafari (Meade LX200 Classic), **St** = Stellarium (desktop /
 | `:GL#` `:GC#` | local time / date | `HH:MM:SS#` / `MM/DD/YY#` | ok | I |
 | `:GS#` | local sidereal time | `HH:MM:SS#` | ok | I |
 | `:Gc#` | clock format | `24#` | ok | I |
+| `:GM#` | site name | `GM-K150#` | ok | I |
 
 ## Informational
 
@@ -80,7 +82,7 @@ reverses. Dec runs at +- guide rate. The ST-4 input uses the same engine and rat
 
 ## Accepted silently / not implemented
 
-`:hP# :hR#` (park), `:H#`, `:I#`, `:L..#` (library), `:W1-4#` (site select), `:g+# :g-#` (GPS),
+`:hR#`, `:H#`, `:I#`, `:L..#` (library), `:W1-4#` (site select), `:g+# :g-#` (GPS),
 `:V..#` (PEC), `:f..#` (fan), `:B..#` (reticle), `:AL# :AP# :AA#` -- no reply.
 
 Not implemented (no reply, apps time out on them): `:Sa# :Sz# :MA#` (alt/az targets), `:GM#`..`:GP#` site names, `:ST#` tracking frequency,
@@ -99,8 +101,21 @@ Not implemented (no reply, apps time out on them): `:Sa# :Sz# :MA#` (alt/az targ
 | `:TH# :TD# :TC..# :TCR# :G~#` | K150 tracking control | -- |
 | `:MT0# :MT1#` | closed-loop HA tracking off/on | -- |
 | `:R*R# :R*S# :R*C# :RR#` | slew rate table | -- |
-| `:F+# :F-# :FN# :FR# :FS# :FP# :F0#` | focuser | `:F+ :F- :FQ :FF :FS` similar |
+| `:F+# :F-# :FQ#` | focuser in / out / halt, no reply | same (INDI focuser) |
+| `:FS#` | focuser halt | slow speed -- harmless (stops) |
+| `:FN# :FR# :FP# :F0#` | focuser steps / rate / position / zero | -- |
 | `:%..#` `:@#` `:?#` | keypad, tests, help | -- |
 | **`:GN#`** | raw positions in hex (main.py) | site 2 name -- conflict, apps rarely ask |
 | **`:SM..#`** | motor speed/power setup | set site 1 name -- conflict, apps rarely send |
 | **`:TR#`** | report tracking rates | (Autostar) return to default rate -- conflict, rare |
+
+## Tested with INDI `indi_lx200generic` (1.9.9, device "Standard LX200")
+
+Captured on a virtual serial port against a stand-in for these replies:
+connect `<ACK> :GR# <ACK> :Gc# :GM# :GT# :Gt# :Gg# :GG# :GL# :GC#`, then `:GR# :GD#` polling;
+GOTO `:Sr :Sd :MS#` then `:D#` until `#`; sync `:Sr :Sd :CM#`; motion `:Mn# / :Qn#`;
+slew rate 1x-4x = `:RG# :RC# :RM# :RS#`; abort `:Q#`; park `:hP#` then `:D#`;
+site/time from `GEOGRAPHIC_COORD` / `TIME_UTC`: `:Sg072*55# :St+40*57# :SG+5.0# :SL22:30:00# :SC11/17/26#`.
+Guiding: right after connect INDI 1.9.9 guides with `:RG# :Mw# ... :Qw#` although "Use Pulse Cmd"
+shows On; after toggling it Off/On it sends `:Mgn0300#`. Both now give the same guide-rate correction.
+The driver has no TELESCOPE_TRACK_STATE and no GUIDE_RATE property.

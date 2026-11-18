@@ -142,6 +142,17 @@ ST-4 inputs and `:Mg[nsew]NNNN#` pulses share one engine: RA guiding runs the tr
 Dec runs at +- guide rate. Default guide rate 0.5x sidereal, set with `:RgSS.S#` (arcsec/s),
 read with `:Rg#`. PHD2 etc. calibrate the directions themselves.
 
+### INDI / KStars / PyStarLight
+Driver `indi_lx200generic` (device "Standard LX200"):
+- **USB:** use the Due's **native USB port** (`/dev/serial/by-id/usb-Arduino_LLC_Arduino_Due-if00`):
+  opening it does not reset the Due (the programming port does, and the start-up then takes ~10 s).
+  Baud rate is irrelevant on the native port (19200 on the programming port).
+- **WiFi:** connection mode TCP, `192.168.4.1:4030` (ESP32 bridge).
+- The driver's `<ACK>` probe switches that port to strict LX200 automatically.
+- Sync once (Align / sync on a star) before GOTO; park = pole, counterweight down.
+- PyStarLight `[indi]`: `mount_driver = "indi_lx200generic"`, `mount_connection = "usb"` with
+  `mount_port` = the native USB device above, or `"wifi"` with `mount_port = "192.168.4.1:4030"`.
+
 ### Longitude convention
 LX200: **west positive** (`:Sg+072*55#` = 72 deg 55' W). Old test notes in this repo used
 `:Sg-072:55#`; that now means 72 deg 55' **east**.
