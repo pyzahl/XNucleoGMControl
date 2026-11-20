@@ -90,7 +90,7 @@ mount standard LX200 commands. Neither app supports BLE (HM-10); they connect vi
 WiFi/TCP (Android + iOS) or classic Bluetooth SPP (Android only).
 
 **Hardware:** an ESP32 dev board runs [`ESP32-WiFi-Bridge/`](ESP32-WiFi-Bridge/ESP32-WiFi-Bridge.ino)
-(own access point, TCP port 4030) and is wired to the Due's Serial1:
+(TCP port 4030) and is wired to the Due's Serial1:
 
 | ESP32 | Due |
 |---|---|
@@ -105,7 +105,20 @@ Both are 3.3 V logic: no level shifter. Serial1 runs 19200 baud in strict LX200 
 clone with a WROOM-32 module). Use **ESP32-DevKitC-32UE** (u.FL antenna socket) if the electronics
 sit in a metal box. Avoid WROVER modules (their PSRAM occupies GPIO16/17) and ESP32-C3/C6/S2
 (different chip, sketch would need changes). Build it as *ESP32 Dev Module* (Boards Manager:
-*esp32 by Espressif*).
+*esp32 by Espressif*), or from the command line:
+
+    arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+    arduino-cli compile --fqbn esp32:esp32:esp32 ESP32-WiFi-Bridge
+    arduino-cli upload  --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 ESP32-WiFi-Bridge
+
+**Network:** copy `ESP32-WiFi-Bridge/secrets.h.example` to `secrets.h` (git-ignored) and enter
+the home WiFi name and password. The bridge then joins that network as `gm-k150`
+(mDNS `gm-k150.local`, often not resolved by Android apps -- use the IP). Give it a fixed address
+with a DHCP reservation in the router or `STATIC_IP` in `secrets.h`. If the home network is not
+found within 15 s at boot (or no `secrets.h`), it opens its own access point `GM-K150`
+(password `k150mount`, IP `192.168.4.1`) and, while idle, reboots every 5 min to retry the home
+WiFi. The USB serial port (115200) prints the address in use at boot; the on-board LED blinks
+while joining and stays on while an app is connected.
 
 **Power:** WiFi peaks ~250 mA. If the Due runs from 12 V on its barrel jack, do not load its
 5 V regulator with the ESP32 -- power the ESP32 from its own USB (power bank / charger) or a small
@@ -141,8 +154,9 @@ Due sketch change `comm_0 = new Communication ("COMM_WIFI_SERIAL1", &Serial1, NU
 the ESP32: use `&Serial3` there, remove the `comm_blue` line, and set `SERIAL3_BAUDRATE` to 19200
 (the start-up `AT` probe on Serial3 can stay; the bridge drops data until a client connects).
 
-**App settings:** join WiFi `GM-K150` (password `k150mount`), mount *Meade LX200 Classic*
-(SkySafari) / *LX200* (Stellarium Mobile Plus), WiFi/TCP `192.168.4.1` port `4030`.
+**App settings:** mount *Meade LX200 Classic* (SkySafari) / *LX200* (Stellarium Mobile Plus),
+WiFi/TCP to the bridge's home-network IP (or `192.168.4.1` on its own `GM-K150` access point),
+port `4030`.
 Let the app set time and location on connect.
 
 ### Using GOTO
@@ -177,11 +191,12 @@ Driver `indi_lx200generic` (device "Standard LX200"):
 - **USB:** use the Due's **native USB port** (`/dev/serial/by-id/usb-Arduino_LLC_Arduino_Due-if00`):
   opening it does not reset the Due (the programming port does, and the start-up then takes ~10 s).
   Baud rate is irrelevant on the native port (19200 on the programming port).
-- **WiFi:** connection mode TCP, `192.168.4.1:4030` (ESP32 bridge).
+- **WiFi:** connection mode TCP, `gm-k150.local:4030` / its IP on the home network
+  (`192.168.4.1:4030` on the bridge's own access point).
 - The driver's `<ACK>` probe switches that port to strict LX200 automatically.
 - Sync once (Align / sync on a star) before GOTO; park = pole, counterweight down.
 - PyStarLight `[indi]`: `mount_driver = "indi_lx200generic"`, `mount_connection = "usb"` with
-  `mount_port` = the native USB device above, or `"wifi"` with `mount_port = "192.168.4.1:4030"`.
+  `mount_port` = the native USB device above, or `"wifi"` with `mount_port = "gm-k150.local:4030"` (or the IP).
 
 ### Longitude convention
 LX200: **west positive** (`:Sg+072*55#` = 72 deg 55' W). Old test notes in this repo used
