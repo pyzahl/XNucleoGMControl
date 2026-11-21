@@ -1,7 +1,8 @@
 // ESP32 WiFi <-> serial bridge for the GM K150 mount controller (Arduino Due).
 //
 // Passes everything between one TCP client (SkySafari, Stellarium Mobile Plus,
-// KStars/INDI, ...) and the Due's Serial1, where the firmware speaks plain LX200.
+// KStars/INDI, ...) and the Due's Serial3 (the former HM-10 BLE socket), where the
+// firmware speaks plain LX200 (ESP32_ON_SERIAL3 1 in the Due sketch).
 //
 // Network:
 //   1. Joins the home WiFi from secrets.h (copy secrets.h.example -> secrets.h).
@@ -19,10 +20,11 @@
 //   Connection   : WiFi / TCP, IP as above, port 4030
 //
 // Wiring (both boards are 3.3 V logic -- connect directly, no level shifter):
-//   ESP32 GPIO17 (TX2)  ->  Due pin 19 (RX1)
-//   ESP32 GPIO16 (RX2)  <-  Due pin 18 (TX1)
+//   ESP32 GPIO17 (TX2)  ->  Due pin 15 (RX3)   (the HM-10 TXD wire)
+//   ESP32 GPIO16 (RX2)  <-  Due pin 14 (TX3)   (the HM-10 RXD wire)
 //   ESP32 GND           --  Due GND
 //   ESP32 VIN / 5V      <-  Due 5V   (or power the ESP32 from its own USB)
+//   (ESP32_ON_SERIAL3 0 in the Due sketch: Due pins 19 RX1 / 18 TX1 instead)
 //
 // Board: any ESP32 dev board ("ESP32 Dev Module"), Arduino-ESP32 core.
 

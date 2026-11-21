@@ -90,16 +90,21 @@ mount standard LX200 commands. Neither app supports BLE (HM-10); they connect vi
 WiFi/TCP (Android + iOS) or classic Bluetooth SPP (Android only).
 
 **Hardware:** an ESP32 dev board runs [`ESP32-WiFi-Bridge/`](ESP32-WiFi-Bridge/ESP32-WiFi-Bridge.ino)
-(TCP port 4030) and is wired to the Due's Serial1:
+(TCP port 4030) and plugs into the former HM-10 BLE socket, the Due's Serial3
+(`ESP32_ON_SERIAL3 1` in the Due sketch, the default):
 
-| ESP32 | Due |
-|---|---|
-| GPIO17 (TX2) | pin 19 (RX1) |
-| GPIO16 (RX2) | pin 18 (TX1) |
-| GND | GND |
-| VIN / 5V | 5V |
+| ESP32 | HM-10 wire it takes over | Due |
+|---|---|---|
+| GPIO17 (TX2) | TXD | pin 15 (RX3) |
+| GPIO16 (RX2) | RXD | pin 14 (TX3) |
+| GND | GND | GND |
+| VIN / 5V | VCC (if 5 V) | 5V |
 
-Both are 3.3 V logic: no level shifter. Serial1 runs 19200 baud in strict LX200 mode.
+Both are 3.3 V logic: no level shifter. Serial3 then runs 19200 baud in strict LX200 mode (no
+`AT` probe or banner at boot). If the HM-10 socket was fed 3.3 V, do not run the ESP32 from it
+(WiFi peaks ~250 mA) -- give it its own 5 V (see *Power*).
+With `ESP32_ON_SERIAL3 0` the ESP32 goes to Serial1 instead (GPIO17 -> pin 19 RX1, GPIO16 <- pin 18
+TX1) and the HM-10 stays on Serial3.
 
 **Module:** Espressif **ESP32-DevKitC V4 with ESP32-WROOM-32E** (or a 30-pin "ESP32 DevKit V1"
 clone with a WROOM-32 module). Use **ESP32-DevKitC-32UE** (u.FL antenna socket) if the electronics
@@ -143,16 +148,14 @@ header (D0-D13, A0-A5); pins 14-21 are on the Due's extended header.
 | 10 | powerSTEP nCS (daisy chain H, D, F) |
 | 52 | OLED SSD1351 CS |
 | SPI header (ICSP) MOSI/MISO/SCK | powerSTEP + OLED (+ SD) -- on the Due SPI is only on this header, not D11-D13 |
-| 14 / 15 | `Serial3` TX3/RX3 -- HM-10 BLE (9600 baud), normal console protocol |
+| **14 / 15** | **`Serial3` TX3/RX3 -- ESP32 WiFi bridge in the old HM-10 socket (strict LX200, 19200 baud);** with `ESP32_ON_SERIAL3 0`: HM-10 BLE (9600 baud), normal console protocol |
 | 16 / 17 | `Serial2` TX2/RX2 -- opened at 19200, **free / unused** |
-| **18 / 19** | **`Serial1` TX1/RX1 -- ESP32 WiFi bridge (strict LX200, 19200 baud)** |
+| 18 / 19 | `Serial1` TX1/RX1 -- free; ESP32 WiFi bridge with `ESP32_ON_SERIAL3 0` (strict LX200, 19200 baud) |
 | 20 / 21 | I2C SDA/SCL -- MCP23017 keypad + ST-4 (address 0x24) |
 
-**If 18/19 are taken by your rewiring:** use the free `Serial2` (pins 16/17) instead -- in the
-Due sketch change `comm_0 = new Communication ("COMM_WIFI_SERIAL1", &Serial1, NULL, true);` to
-`&Serial2` (both run 19200). Or replace the HM-10 on `Serial3` (pins 14/15, already wired) with
-the ESP32: use `&Serial3` there, remove the `comm_blue` line, and set `SERIAL3_BAUDRATE` to 19200
-(the start-up `AT` probe on Serial3 can stay; the bridge drops data until a client connects).
+**Other port:** to put the ESP32 on the free `Serial2` (pins 16/17) instead, set
+`ESP32_ON_SERIAL3 0` and change `&Serial1` to `&Serial2` in the `COMM_WIFI_SERIAL1` line of the Due
+sketch (both run 19200).
 
 **App settings:** mount *Meade LX200 Classic* (SkySafari) / *LX200* (Stellarium Mobile Plus),
 WiFi/TCP to the bridge's home-network IP (or `192.168.4.1` on its own `GM-K150` access point),

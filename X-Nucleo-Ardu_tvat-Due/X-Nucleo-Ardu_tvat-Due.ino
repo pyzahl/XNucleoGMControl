@@ -68,7 +68,15 @@ File myFile;
 #define SERIAL_PRG_BAUDRATE  19200
 #define SERIAL1_BAUDRATE     19200
 #define SERIAL2_BAUDRATE     19200
+// ESP32 WiFi bridge (strict LX200, 19200 baud) is plugged in where the HM-10 BLE module was:
+// 1 = ESP32 on Serial3 (pins 14 TX3 / 15 RX3, the HM-10 socket), HM-10 dropped, Serial1 unused
+// 0 = ESP32 on Serial1 (pins 18 TX1 / 19 RX1), HM-10 BLE (console protocol, 9600) on Serial3
+#define ESP32_ON_SERIAL3     1
+#if ESP32_ON_SERIAL3
+#define SERIAL3_BAUDRATE     19200 // ESP32 bridge, must match DUE_BAUD in ESP32-WiFi-Bridge.ino
+#else
 #define SERIAL3_BAUDRATE     9600 // BLUE BLE4.0 default
+#endif
 
 // MCP23x17 control registers
 #define MCP_I2C_SELECT     0x24 // I2C Adresse: 0x20 + 4  (A2=HI)
@@ -2723,6 +2731,9 @@ void setup()
   SerialUSB.println (F("THIS IS NATIVE SERIAL USB."));
 
   Serial3.begin(SERIAL3_BAUDRATE);
+#if ESP32_ON_SERIAL3
+  // ESP32 WiFi bridge: strict LX200 -- no AT probe, no banner (and no 10 s wait for a BLE reply)
+#else
   Serial3.println (F("AT"));
 
   i=100;
@@ -2735,6 +2746,7 @@ void setup()
     SerialUSB.println("BLE not responding.");
   
   Serial3.println (F("THIS IS SERIAL3."));
+#endif
 
   
 #endif
@@ -3067,8 +3079,12 @@ void setup()
 #else
   comm_master  = new Communication ("COMM_MASTER_SERIAL",  &SerialUSB);
   comm_usb     = new Communication ("COMM_USBNATIVE", &Serial);
+#if ESP32_ON_SERIAL3
+  comm_0       = new Communication ("COMM_WIFI_SERIAL3", &Serial3, NULL, true); // ESP32 WiFi bridge in the HM-10 socket: INDI, SkySafari, Stellarium Mobile
+#else
   comm_blue    = new Communication ("COMM_SERIAL3",  &Serial3);
   comm_0       = new Communication ("COMM_WIFI_SERIAL1", &Serial1, NULL, true); // ESP32 WiFi bridge: SkySafari / Stellarium Mobile
+#endif
 #endif
 
   startup_message_ln((const char*)F("COMM READY"), GREEN);
